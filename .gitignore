@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Datasets intermedios obsoletos
+data/processed/X_*.csv
+data/processed/y_*.csv

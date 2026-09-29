@@ -1,0 +1,16 @@
+name: ml_spotify
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - numpy=1.26.4
+  - pandas=2.2.2
+  - scikit-learn=1.5.2
+  - matplotlib=3.9.2
+  - seaborn=0.13.2
+  - ipykernel=6.29
+  - jupyter=1.1
+  - pip
+  - pip:
+      - python-pptx
