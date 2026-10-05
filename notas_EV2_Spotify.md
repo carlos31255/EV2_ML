@@ -492,7 +492,8 @@ HistGradientBoosting    0.7327     0.4228  0.8271    0.5595   0.8544     0.8812 
     - `09_curva_ganancia_acumulada.png`
 
 ### 10.6 Limpieza de Archivos Antiguos (Octubre 2026)
-- Se eliminaron las carpetas obsoletas images/ y models/, reemplazadas formalmente por output/graficos/ y output/modelos/.
-- Se eliminaron los datasets intermedios obsoletos de la raíz de data/processed/ (X_model.csv, y_model.csv, X_*_corrected.csv, y_train.csv, y_test.csv, eature_names.csv), quedando ahora centralizados en la estructura oficial data/processed/train/ y data/processed/test/.
-- Se removieron los archivos de prueba temporales (	est.svg, output/graficos/test_pil.png, 	est.pdf).
-- Se actualizaron las referencias en main.py para prescindir de carpetas deprecadas.
+- Se eliminaron las carpetas obsoletas `images/` y `models/`, reemplazadas formalmente por `output/graficos/` y `output/modelos/`.
+- Se eliminaron los datasets intermedios obsoletos de la raíz de `data/processed/` (`X_model.csv`, `y_model.csv`, `X_*_corrected.csv`, `y_train.csv`, `y_test.csv`, `feature_names.csv`), quedando centralizados en la estructura oficial `data/processed/train/` y `data/processed/test/`.
+- Se eliminaron los notebooks antiguos (`notebooks/EV1_Spotify.ipynb` y `notebooks/EV2_Spotify_Modelos.ipynb`), dejando la carpeta `notebooks/` preparada para los 3 nuevos notebooks modulares (`0_exploracion_inicial.ipynb`, `1_EDA.ipynb`, `2_Modelacion.ipynb`).
+- Se removieron los archivos de prueba temporales (`test.svg`, `output/graficos/test_pil.png`, `test.pdf`).
+- Se actualizaron las referencias en `main.py` para prescindir de carpetas deprecadas.
