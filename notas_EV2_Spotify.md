@@ -2,7 +2,7 @@
 ## Caso C: Spotify — Modelamiento y Evaluación
 
 > **Propósito:** Documento temporal de trabajo para registrar decisiones técnicas, hallazgos y pendientes durante el desarrollo de EV2. **No es el informe técnico final.**
-> Última actualización: 2026-09-30 (versión corregida del notebook + negocio, KPIs y K-Means + ablación audio vs género, umbral por género y Target Encoding: secciones 4.4 y 8)
+> Última actualización: 2026-09-30 (versión corregida del notebook + negocio, KPIs y K-Means)
 
 ---
 
@@ -17,7 +17,6 @@
 | Modelo no supervisado (K-Means, 6 segmentos) | ✅ Listo | Sección 9 del notebook; la pauta lo exige (IE7, 30%) |
 | Modelos entrenados (LR, RF, HistGB) | ✅ Listo | Ver sección 4 |
 | Evaluación y métricas | ✅ Listo | Ver sección 4 |
-| Dominio del género: ablación y alternativas | ✅ Hecho | Sección 4.4 (resultados) y sección 8 (historial de problemas y justificación). Notebook 7.3 a 7.6 |
 | Informe técnico `.md` tipo README | 🔜 Pendiente | **Entregable obligatorio de la pauta** (ver sección 7) |
 | Estructura de carpetas (data/, notebooks/, models/, images/, README.md) | 🔜 Por revisar | Exigida por la pauta |
 | Presentación PPT EV2 | 🔜 Pendiente | |
@@ -198,7 +197,7 @@ Los tres modelos quedan bajo el umbral de 0.05: sin sobreajuste significativo. E
 | `liveness_log` | 0.0420 |
 | `energy` | 0.0262 |
 
-> **Ojo en la defensa:** el género concentra el 73,4% de la importancia y la regresión logística queda cerca de HistGB (0.8357 vs 0.8544). Gran parte del poder predictivo viene del género y no de las características de audio. **Esto se cuantificó con una ablación (sección 4.4):** sin género el AUC cae a 0.63–0.70.
+> **Ojo en la defensa:** el género concentra el 73,4% de la importancia y la regresión logística queda cerca de HistGB (0.8357 vs 0.8544). Gran parte del poder predictivo viene del género y no de las características de audio.
 
 ### 4.1 KPIs de negocio (sección 7.1 del notebook)
 
@@ -257,66 +256,26 @@ Correlación n° de géneros vs probabilidad: 0,205; vs popularity real: −0,00
 
 ---
 
-### 4.4 ¿Cuánto aporta el audio frente al género? Ablación y alternativas (secciones 7.3 a 7.6 del notebook)
-
-**Por qué se hizo.** La importancia de variables (73.4% para el género) no dice cuánto rinde el modelo *sin* esas variables. Un agente de apoyo propuso tres caminos para "resolver el sesgo" del género; en lugar de aceptarlos sin verificar, se evaluó cada uno con los mismos datos, split por canción (`GroupShuffleSplit`, `random_state=42`), Pipeline, hiperparámetros y umbral P80 = 52 (solo train).
-
-**(a) Ablación: modelo sin columnas de género (HECHO, es el argumento principal).**
-
-| Modelo | Variante | AUC | F1 | Recall | Lift @ top-10% |
-|---|---|---|---|---|---|
-| Regresión Logística | A) Todo | 0.8357 | 0.5517 | 0.7979 | 3.01 |
-| Regresión Logística | B) Solo audio | 0.6324 | 0.3725 | 0.6175 | 1.62 |
-| Regresión Logística | C) Solo género | 0.8314 | 0.5433 | 0.7861 | 3.00 |
-| HistGradientBoosting | A) Todo | 0.8544 | 0.5595 | 0.8271 | 3.30 |
-| HistGradientBoosting | B) Solo audio | 0.6952 | 0.4192 | 0.6831 | 2.05 |
-| HistGradientBoosting | C) Solo género | 0.8393 | 0.5648 | 0.7326 | 3.20 |
-
-- Sin género el AUC cae **0.2033 (LR)** y **0.1592 (HistGB)**. La variación de la CV es 0.003–0.005, así que la caída no es ruido.
-- Saber solo el género casi iguala al modelo completo. El audio suma **+0.004 (LR)** y **+0.015 (HistGB)** de AUC sobre el género.
-- El audio sí tiene señal (AUC 0.63–0.70 > 0.50), pero no alcanza las metas: AUC < 0.80; solo HistGB llega justo al Lift ≥ 2.0 (2.05).
-- **Matiz que hay que decir en la defensa:** B *subestima* el aporte total del audio, porque el audio también informa el género (K-Means recupera familias de género desde el audio). Y no prueba que el género *cause* la popularidad: puede reflejar exposición algorítmica (sesgo de EP1).
-
-**(b) Umbral de hit relativo al género (HECHO, solo diagnóstico).** P80 por género calculado solo con train, usando el primer género de cada canción.
-
-| Modelo | Variables | AUC | Lift @ top-10% |
-|---|---|---|---|
-| HistGB, target relativo | Todo | 0.6491 | 1.96 |
-| HistGB, target relativo | Solo audio | 0.5730 | 1.41 |
-
-Tasa de hits relativa: 21.7% (train) / 21.6% (test). Ningún género necesitó el `clip(lower=1)`. Dentro de un mismo género el audio casi no separa hits de no-hits (0.573). **No reemplaza el target principal** (ver problemas en sección 8).
-
-**(c) Target Encoding regularizado (HECHO, solo robustez).** Una columna en lugar de 114, suavizado con m = 20, estimación out-of-fold en train (`StratifiedGroupKFold` por canción) y promedio de los géneros en canciones multi-género.
-
-| Modelo | AUC | F1 | Recall | Lift @ top-10% | AUC con multi-hot |
-|---|---|---|---|---|---|
-| HistGB (audio + TE) | 0.8482 | 0.5633 | 0.7985 | 3.18 | 0.8544 |
-| LR (audio + TE) | 0.8335 | 0.5554 | 0.7458 | 3.10 | 0.8357 |
-
-**Decisión:** el modelo principal sigue siendo **HistGradientBoosting con multi-hot y target global (P80 de train)**. (b) y (c) no lo mejoran y quedan como evidencia complementaria. El género dominante se reporta como **hallazgo y limitación**, no como error corregido.
-
----
-
 ## 5. Pendientes / próximos pasos
 
 - [x] Completar la sección 4 con resultados reales del notebook
 - [x] Revisar feature importance: el género domina (0.7337)
 - [x] Reducir sobreajuste en Random Forest: gap 0.106 → 0.0198 (con el split por canción y el nuevo preprocesamiento)
 - [x] Mejorar recall de Gradient Boosting: resuelto con `class_weight='balanced'` (recall 0.15 → 0.83)
-- [x] Evaluar alternativa a Label Encoding: se usó multi-hot/one-hot; luego se probó Target Encoding regularizado (sección 4.4c): mismo rendimiento, se mantiene multi-hot
+- [x] Evaluar alternativa a Label Encoding: se usó multi-hot/one-hot (Target Encoding ya no hace falta)
 - [x] Re-ejecutar el notebook en la máquina local: las métricas de test coinciden
 - [x] Agregar sección de negocio/CRISP-DM/KPIs, justificación de variables y modelos, modelo no supervisado y conclusiones de negocio al notebook
 - [x] Medir si el puntaje depende del número de géneros (sección 7.2): no depende de que el modelo cuente géneros
-- [ ] Volver a ejecutar en la máquina local la versión nueva del notebook (incluye K-Means y secciones 7.2 a 7.6) y confirmar que los números de las secciones 4.2, 4.3 y 4.4 coinciden
+- [ ] Volver a ejecutar en la máquina local la versión nueva del notebook (incluye K-Means y sección 7.2) y confirmar que los números de las secciones 4.2 y 4.3 coinciden
 - [ ] Decidir si hacer tuning de hiperparámetros (GridSearchCV / RandomizedSearchCV)
 - [ ] Analizar errores del modelo (¿qué géneros falla más en predecir?)
-- [x] Medir el aporte real de las features de audio: entrenar un modelo sin las columnas de género y comparar (sección 4.4: AUC cae 0.16–0.20)
+- [ ] Medir el aporte real de las features de audio: entrenar un modelo sin las columnas de género y comparar
 - [ ] Decidir el umbral de decisión según costo de negocio (hoy 0.5)
 - [ ] Escribir el **informe técnico en Markdown (.md) tipo README**, entregable obligatorio: problema de negocio, objetivos, KPIs, fuentes de datos, EDA, CRISP-DM (ver sección 7)
 - [ ] Revisar que la carpeta del proyecto tenga la estructura pedida: `data/`, `notebooks/`, `models/`, `images/`, `README.md`, y que el notebook corra sin modificaciones
 - [ ] Confirmar con el docente las metas de los KPIs (las definió el equipo como referencia)
 - [ ] Crear la presentación (10 minutos por estudiante) con los 5 apartados pedidos
-- [ ] Preparar la defensa: explicar qué observó el docente, por qué la v1 de EV2 no lo corregía, cómo se cuantificó la fuga y cómo se midió el dominio del género (usar la sección 8 como guion)
+- [ ] Preparar la defensa: explicar qué observó el docente, por qué la v1 de EV2 no lo corregía y cómo se cuantificó la fuga
 
 ---
 
@@ -327,7 +286,6 @@ Tasa de hits relativa: 21.7% (train) / 21.6% (test). Ningún género necesitó e
 - ¿Se requiere tuning de hiperparámetros o basta con configuración razonada?
 - ¿La comparativa EV1 (raw vs clean) debe estar en el informe EV2 también o solo en EV1?
 - ¿El docente acepta el cambio de `GradientBoostingClassifier` a `HistGradientBoostingClassifier`, o hay que justificarlo en el informe?
-- ¿El docente considera el dominio del género un problema a corregir o un hallazgo válido a reportar? (hoy se reporta como hallazgo, con ablación)
 
 ---
 
@@ -350,54 +308,191 @@ Tasa de hits relativa: 21.7% (train) / 21.6% (test). Ningún género necesitó e
 
 ---
 
-## 8. Historial de problemas encontrados y justificación de cada decisión (guion para la defensa)
+## 8. Plan de trabajo para la siguiente sesión (instrucciones para el agente)
 
-Cada fila es un problema real que apareció en una versión anterior, por qué esa primera solución no bastaba y qué se hizo. Las cifras están medidas en este proyecto (no son supuestos).
+**Contexto:** el sesgo "más géneros → más puntaje" ya se diagnosticó (sección 4.3). Falta decidir cómo tratarlo y reforzar la defensa. Evaluación de tres propuestas recibidas:
 
-### 8.1 Problemas de las primeras versiones (v1 de EV2 y EV1)
-
-| # | Problema detectado | Primera solución (insuficiente) | Por qué no bastaba | Solución final | Evidencia |
-|---|---|---|---|---|---|
-| 1 | Canciones repetidas por género pesaban más (observación del docente) | v1 solo dejó de escalar `track_genre_encoded` | No tocaba las filas repetidas; eran 23.809 filas extra (20.97%) | Una fila por `track_id`, género multi-hot (114 columnas) | 0 filas repetidas en train |
-| 2 | Orden falso del género (Label Encoding) | No escalar el código | Escalar es una transformación lineal: el orden alfabético 0–113 sigue ahí y la regresión logística lo interpreta como magnitud (r con popularidad media = 0.0641) | One-hot (`key`, `time_signature`) y multi-hot (género) | LR: AUC 0.6257 → 0.8357 |
-| 3 | Fuga de datos en el split | `train_test_split` por fila | 30.8% de las filas de test tenían su canción en train; la CV tenía el mismo problema | `GroupShuffleSplit` y `StratifiedGroupKFold` con `groups=song_key` + `assert` de disjunción | AUC inflado en +0.0453 (0.7958 vs 0.7505) |
-| 4 | Umbral P80 calculado con todo el dataset | P80 global = 54 | Usaba información de test para definir el target | P80 solo con train (52 pts) | Train 21.0% / test 20.5% de hits |
-| 5 | `StandardScaler` ajustado con todo el dataset (EV1) | Escalar antes del split | Contamina train con estadísticos de test | `StandardScaler` dentro del `Pipeline` (se ajusta por fold) | — |
-| 6 | Gradient Boosting con recall 0.16 | `GradientBoostingClassifier` sin ajustes | No maneja el desbalance (~80/20) internamente | `HistGradientBoostingClassifier(class_weight='balanced')` | Recall 0.15 → 0.83 |
-| 7 | Random Forest sobreajustado (gap 0.106) | Hiperparámetros por defecto | Árboles profundos memorizaban, además de la fuga | `max_depth=15`, `min_samples_leaf=10` + split por canción | Gap 0.106 → 0.0198 |
-
-### 8.2 El conteo de géneros (sección 4.3 y 7.2)
-
-- **Problema:** el puntaje del modelo sube con el número de géneros (0.381 / 0.517 / 0.543 para 1 / 2 / 3+).
-- **Primera hipótesis:** el modelo "cuenta categorías". **Se descartó** con proporciones (B) y un solo género por canción (C): la correlación persiste (0.22–0.24).
-- **Explicación respaldada por los datos:** las canciones multi-género son distintas (34.6% de hits con 2 géneros vs 17.8% con 1). Una hipótesis no evaluada: muestreo del dataset (~1.000 canciones por género).
-
-### 8.3 El género domina el modelo: las tres propuestas del agente y qué se encontró
-
-Planteamiento original del agente: "resolver el sesgo" del género. Se evaluó cada propuesta antes de aceptarla:
-
-| Propuesta | Problema o riesgo encontrado al revisarla | Qué se hizo | Resultado | Decisión |
+| # | Propuesta | Factible | Prioridad | Comentario |
 |---|---|---|---|---|
-| 1. Entrenar sin género y comparar AUC | El agente dio una cifra ilustrativa ("0.85 → 0.65") sin haberla medido. Además B subestima el aporte del audio (el audio informa el género) | Ablación A/B/C con LR y HistGB, mismo split y pipeline | AUC 0.8544 → 0.6952 (HistGB), 0.8357 → 0.6324 (LR); solo género: 0.8393 / 0.8314 | **Adoptada.** Es el argumento principal |
-| 2. P80 por género | (i) Una canción multi-género no tiene un percentil único; (ii) el target cambia de "popular en Spotify" a "popular para su género", así que invalida la comparación con los KPIs; (iii) un género con P80 = 0 haría hit a todas sus canciones | Primer género alfabético (convención declarada), P80 solo con train, `clip(lower=1)` | AUC 0.6491 (todo) y 0.5730 (solo audio) | **Solo diagnóstico.** Mantener el target global |
-| 3. Target Encoding regularizado | (i) Usa el target: si no es out-of-fold hay fuga; (ii) no "evita aprender el diccionario de géneros": la columna única *es* ese diccionario comprimido | TE con suavizado m = 20, OOF con `StratifiedGroupKFold`, promedio para multi-género | AUC 0.8482 (HistGB) y 0.8335 (LR), casi igual que multi-hot | **Solo robustez.** Mantener multi-hot |
+| 1 | Modelo **sin columnas de género** y comparar AUC | Sí, simple | **Alta** | Ya estaba como pendiente. No se ha ejecutado; **no asumir el resultado** (no hay evidencia de que caiga a 0.65). Responde si el modelo predice "popularidad del género" o "sonido". |
+| 2 | P80 **dentro de cada género** | Sí, pero cambia el objetivo | Media, como experimento aparte | Cambia la pregunta de negocio (hit relativo al género) y todos los KPIs. Hay que definir una regla para canciones multi-género (p. ej. promedio de los z-scores de popularidad en sus géneros). No reemplaza al modelo principal. |
+| 3 | Target Encoding regularizado | Sí, con cuidado | Baja | No corrige el sesgo: entrega el mismo dato (popularidad del género) en una sola columna. Con multi-género hay que agregar (promedio) y calcularlo **dentro de cada fold** para no filtrar el objetivo. |
 
-### 8.4 Por qué se mantiene el modelo final
+### Tareas, en orden
+1. **Sección 7.3 — Ablación sin género.** Entrenar LR, RF y HistGB con las mismas variables pero sin `FEATURES_GENRE`, mismo split y mismos hiperparámetros; reportar AUC, F1, recall, lift @ top-10% y compararlos con los modelos completos. Agregar también un modelo **solo con género** (solo columnas `genre_*`). Interpretar con honestidad: cuánto aporta el audio y cuánto el género.
+2. **Sección 7.4 — Mitigación por reweighing** (ya probada fuera del notebook; ver resultados abajo). Pesos por (grupo de géneros {1, 2, 3+}, hit): `w = P(g)·P(y) / P(g,y)`, calculados solo en train; pasar con `pipe.fit(X, y, clf__sample_weight=w)` a HistGB. Reportar AUC, lift @ top-10%, correlación n° géneros–probabilidad y % de canciones por grupo que entra al top-10%.
+3. **Opcional — experimento con objetivo relativo al género** (propuesta 2), en una sección aparte y claramente marcado como experimento complementario.
+4. **Omitir** la propuesta 3, salvo que sobre tiempo; si se hace, en un fold interno.
+5. Actualizar la sección 12 (conclusiones) con los resultados de 1 y 2 y **volver a ejecutar el notebook completo**. Actualizar las notas (secciones 4 y 5).
 
-1. **Target global (P80 de train):** responde la pregunta de negocio original ("¿invierto en esta canción?") y es comparable con los KPIs (AUC ≥ 0.80, Recall ≥ 0.75, Lift ≥ 2.0).
-2. **Multi-hot:** no pierde rendimiento frente a alternativas (TE, proporciones, un solo género), conserva el efecto de cada género y no usa el target para construir features.
-3. **HistGradientBoosting:** mejor AUC (0.8544), F1 (0.5595) y recall (0.8271); gap 0.0280 < 0.05.
-4. **El género dominante se reporta, no se "corrige":** es una propiedad real del dataset (y de la plataforma), cuantificada con la ablación. Recomendación de negocio: usar el modelo para *priorizar* y no para descartar géneros con poca exposición.
+### Resultados ya medidos del reweighing (HistGB, test, SEED=42)
+| | Sin pesos | Con reweighing |
+|---|---|---|
+| Correlación n° géneros vs probabilidad | 0.205 | 0.125 |
+| AUC | 0.8544 | 0.8508 |
+| F1 / Recall | 0.5595 / 0.8271 | 0.5521 / 0.8495 |
+| Lift @ top-10% | 3.30 | 3.23 |
+| % del grupo que entra al top-10% (1 / 2 / 3+ géneros) | 7.7% / 19.2% / 22.2% | 8.8% / 15.5% / 13.9% |
 
-### 8.5 Preguntas probables en la defensa
+Pesos obtenidos: (1 género, no-hit) 0.968; (1, hit) 1.144; (2, no-hit) 1.197; (2, hit) 0.617; (3+, no-hit) 1.137; (3+, hit) 0.688. Hit rate real por grupo en test: 17.8% / 34.6% / 27.9%. Grupos: 81.4% / 12.7% / 5.9% de las canciones.
+**Lectura:** reduce la relación sin eliminarla (otras variables actúan como sustitutas) y corrige la sobrevaloración del grupo 3+, pero hace que el modelo subestime la diferencia real entre 1 y 2 géneros. No se sabe si esa diferencia es señal real o artefacto del muestreo del dataset (~1.000 canciones por género).
 
-| Pregunta | Respuesta corta |
-|---|---|
-| ¿Qué observó el docente y qué hicieron? | Canciones con más géneros pesaban más por filas repetidas; se dejó una fila por canción con multi-hot. |
-| ¿Por qué la v1 no lo corregía? | Solo dejó de escalar el código de género; no eliminaba filas repetidas ni el orden falso. |
-| ¿Cómo saben que había fuga? | Mismo RF, mismo umbral, solo cambia el split: por fila 0.7958, por canción 0.7505 (+0.0453). |
-| ¿El modelo predice calidad de audio o popularidad del género? | Sobre todo género: sin género AUC 0.63–0.70; solo género 0.83–0.84. El audio suma +0.004 a +0.015. |
-| ¿No es eso un sesgo que debieron corregir? | Se probaron el umbral por género y el Target Encoding; no mejoran ni cambian la conclusión. Se reporta como limitación y recomendación de uso. |
-| ¿El audio no sirve para nada? | Sí sirve (AUC 0.63–0.70 > 0.50), pero es insuficiente solo; además el audio informa el género, así que la ablación lo subestima. |
-| ¿Por qué no usar el target relativo al género? | Cambia la pregunta de negocio y no es comparable con los KPIs; además requiere elegir un género único por canción. |
+### Datos técnicos para continuar
+- **Notebook:** `EV2_Spotify_Modelos.ipynb` (40 celdas, secciones 0 a 12). Variables disponibles: `df_song`, `train`, `test`, `X_train`, `X_test`, `y_train`, `y_test`, `g_train`, `generos` (lista de géneros por `track_id`), `mlb`, `FEATURES_SCALE`, `FEATURES_CAT`, `FEATURES_BIN`, `FEATURES_GENRE`, `make_pre()`, `results`, `SEED=42`. Los experimentos nuevos deben ir **antes** de la sección 8 (importancia) o numerarse sin romper las referencias existentes.
+- **Datos:** el notebook lee `data/processed/spotify_clean.csv` (113.549 filas, 25 columnas). Si no está disponible, reconstruirlo desde `dataset.csv`: quitar la columna índice, `dropna` en `artists`/`album_name`/`track_name`, `duration_ms > 0`, `drop_duplicates()`, `log1p` en `speechiness`, `instrumentalness`, `liveness`, `duration_ms` (columnas `*_log`) y `track_genre_encoded` con `LabelEncoder`.
+- **Ejecución:** cada comando tiene un límite de 300 s. La ejecución completa del notebook (`jupyter nbconvert --execute`) tarda más, así que lanzarla **en segundo plano** (`setsid nohup python3 -m jupyter nbconvert ... &`) y revisar el log.
+- **Estilo:** marcar como hipótesis lo no verificado, mantener las cifras coherentes con las salidas reales y no afirmar que el sesgo "está resuelto".
+- **Pendiente del usuario:** ejecutar el notebook en su máquina y enviar el `.ipynb` con salidas para compararlo con estos números.
 
+---
+
+## 9. Estructura oficial del proyecto (pizarra del docente, "Semana 8: Evaluación II")
+
+*Transcrita de 3 fotos. Dudas de lectura aclaradas por el usuario en 9.1.*
+
+```
+project/
+├── data/
+│   ├── raw/          train/  test/
+│   └── processed/    train/  test/
+├── notebooks/        0_exploracion_inicial · 1_EDA · 2_Modelacion
+├── src/
+│   ├── pipeline.py
+│   ├── graficos.py ┐
+│   ├── metricas.py ┘→ EDA.py (etapa de EDA del main: ver 9.1)
+│   ├── train.py
+│   └── test.py
+├── output/           graficos/ · modelos/
+├── docs/             0_exploracion_inicial.md · 1_eda.md · 2_modelo.md
+├── README.md
+├── main.py
+└── requirements.txt  (o environment.yml si se usa Conda)
+```
+
+**Flujo del Pipeline (foto 1):** Raw Data → seleccionar columnas (eliminar las con pocos datos, con muchos nulos y con varianza 0) → tipos de variable → NA (imputar con mediana/moda/media/0/1, o eliminar filas o columnas) → eliminar duplicados → transformaciones → guardar → modelo → evaluar → visualizar.
+**Transformaciones:** numéricas según su distribución (normal → StandardScaler; asimétrica → RobustScaler; uniforme → MinMaxScaler); categóricas (ordinal → label/ordinal encoding; nominal → one-hot).
+
+### 9.1 Aclaraciones del usuario (confirmadas)
+- **Lo oficial son los scripts `.py`:** todo el proyecto debe poder ejecutarse con `main.py` (pipeline → entrenamiento → evaluación). Los **notebooks son solo de exploración**.
+- **`EDA.py` (llave de `graficos.py` + `metricas.py`):** la exploración con gráficos y métricas se hace en el notebook de EDA; luego esos mismos gráficos y métricas deben **generarse automáticamente al ejecutar `main.py`**, que ejecuta `graficos.py` y `metricas.py` (agrupados como etapa de EDA). Los resultados se guardan en `output/graficos/`.
+- **Archivo de entorno:** `environment.yml` (Conda) o `requirements.txt`.
+- **"Transformación de variables multiclase" (foto 1):** se refiere, en este caso, a la columna de género (`track_genre`), que es multiclase y multietiqueta por canción. Hoy se resuelve con multi-hot (secciones 3 y 5 del notebook); debe quedar como un paso explícito de `pipeline.py`.
+- **Notebooks:** 0 exploración inicial, 1 EDA, 2 Modelación.
+
+### 9.2 Recomendación del docente sobre el sesgo
+Para resolver el sesgo (canciones con más géneros), el docente recomendó **rehacer el trabajo en un notebook nuevo, siguiendo esta estructura oficial**, en vez de parchar el notebook actual. Implicaciones para el agente:
+- Partir de la estructura de la sección 9 y de `src/pipeline.py` con el flujo de la foto 1 (el paso multiclase del género incluido), con `main.py` como punto de entrada.
+- Reutilizar las decisiones ya validadas: una fila por canción, split y CV por canción (`song_key`), P80 solo con train, Pipeline de sklearn para el preprocesamiento, K-Means como técnica no supervisada y KPIs de negocio.
+- Incluir en el nuevo proyecto el tratamiento del sesgo del plan de la sección 8 (ablación sin género y reweighing), con los resultados ya medidos como referencia.
+- Los notebooks nuevos (0, 1, 2) deben **importar y usar** `src/`, no duplicar la lógica.
+- El orden de las tareas de abajo reemplaza al de la sección 8: primero estructura y pipeline, después experimentos.
+
+### Brechas frente al proyecto actual
+- **Estructura:** hoy hay un solo notebook + `data/processed`, `images/`, `models/`. Falta `src/` (con `main.py` que orquesta pipeline → train → test), `output/graficos` y `output/modelos` (equivalen a `images/` y `models/`), `docs/*.md`, notebooks 0/1/2 separados (EP1 = exploración y EDA; este notebook = modelación), `requirements.txt` y `README.md`.
+- **Split en disco:** la estructura pide `data/raw/{train,test}` y `data/processed/{train,test}`. Hoy el split se hace en memoria. Mantener el split **por canción** (`song_key`) y el P80 calculado solo con train; guardar los CSV de train y test.
+- **Escalado por distribución:** hoy se usa `StandardScaler` en las 10 variables continuas (tras `log1p`). El docente pide elegir por distribución; usar la asimetría medida en EP1 para justificar (p. ej. `RobustScaler` en las que sigan asimétricas) y verificar el efecto en regresión logística y K-Means (los árboles no cambian).
+- **Selección de columnas:** documentar explícitamente el filtro de columnas (pocos datos, muchos nulos, varianza 0) y la imputación de NA (en este dataset hay 1 nulo, que se elimina).
+- **Orden del pipeline:** mapear las secciones del notebook a los pasos de la foto 1 en `docs/1_eda.md` y `docs/2_modelo.md`.
+
+### Tareas (prioridad: estas primero, luego la sección 8)
+1. Crear la carpeta del proyecto con la estructura oficial; el notebook actual queda como referencia, no como entregable.
+2. Escribir `src/pipeline.py` con el flujo de la foto 1 (selección de columnas, tipos, NA, duplicados por canción, transformación multiclase del género, escalado según distribución, guardar `data/processed/{train,test}`), `src/train.py`, `src/test.py`, `src/graficos.py` y `src/metricas.py`.
+3. Crear `main.py` que ejecute todo de punta a punta con un solo comando, y verificar que corre desde cero.
+4. Crear los notebooks 0, 1 y 2 como exploración, usando `src/`.
+5. Escribir `docs/` y `README.md` (informe técnico con las secciones de la pauta, ver sección 7).
+6. Generar `requirements.txt` (o `environment.yml`) con las versiones usadas.
+7. Incorporar los experimentos de la sección 8 (ablación sin género, reweighing) y actualizar las conclusiones.
+
+---
+
+## 10. Bitácora de Implementación y Avance (Octubre 2026)
+
+### 10.1 Estructura Modular Desarrollada en `src/` y `main.py`
+Se implementó la arquitectura modular exigida por el docente para desacoplar el pipeline de los notebooks:
+- **`src/pipeline.py`:**
+  - Deduplicación por canción única (`track_id` / `song_key`).
+  - Tratamiento multietiqueta del género con `MultiLabelBinarizer` (114 columnas `genre_*` multi-hot).
+  - Split train/test estratificado por canción guardando en disco `data/processed/train/` y `data/processed/test/` (71.706 train / 18.034 test, 128 features totales).
+  - Cálculo estricto del umbral P80 únicamente en train (52 puntos; hit rate ~21.0% train, ~20.5% test) para evitar data leakage.
+  - Preprocesamiento con ColumnTransformer de scikit-learn: escalado numérico según distribución (StandardScaler en gaussianas, RobustScaler en asimétricas) y OneHotEncoder en categóricas (`explicit`, `mode`, `time_signature`).
+- **`src/train.py`:**
+  - Entrenamiento y validación cruzada (3-fold StratifiedKFold) de 4 modelos: Regresión Logística, Árbol de Decisión, Random Forest e HistGradientBoosting.
+  - Serialización de artefactos y pipelines entrenados en `output/modelos/*.joblib`.
+- **`src/test.py`:**
+  - Evaluación final en el conjunto de prueba independiente (`X_test.csv`, `y_test.csv`).
+  - Cálculo de métricas globales y exportación de resultados a `output/resultados_modelos.csv`.
+- **`src/metricas.py`:**
+  - Funciones de cálculo: AUC-ROC, F1-Score, Recall, Precision, Accuracy, Lift acumulado al Top-10% y brecha de sobreajuste (gap AUC train - test).
+- **`src/graficos.py`:**
+  - Generación automatizada de visualizaciones EDA y modelación en `output/graficos/`:
+    1. `01_distribucion_popularidad.png`
+    2. `02_distribucion_audio_features.png`
+    3. `03_heatmap_correlaciones.png`
+    4. `04_outliers_boxplots.png`
+    5. `05_popularidad_por_genero.png`
+    6. Curvas ROC, calibración, Lift e importancia de variables por permutación.
+- **`main.py`:**
+  - Orquestador integral ejecutable con un solo comando: ejecuta secuencialmente `pipeline` -> `train` -> `test` -> `graficos` y muestra resumen final de métricas.
+
+### 10.2 Depuración y Solución de Problemas Críticos en Windows
+1. **Multiprocessing y Deadlocks de Spawn:**
+   - En Windows, `joblib` y `scikit-learn` utilizan el método `spawn` para procesos hijos, provocando bloqueos si no se invoca `multiprocessing.freeze_support()`.
+   - Se añadió `freeze_support()` al inicio de `main.py` y se configuró ejecución secuencial determinista (`n_jobs=1`) para estabilidad garantizada.
+2. **Cierre Silencioso al Guardar Gráficos (`0xc06d007f: STATUS_PROCEDURE_NOT_FOUND`):**
+   - **Diagnóstico:** Mediante `python -X faulthandler` se aisló un crash nativo de Windows al ejecutar `transforms.py` (líneas 2455-2456: `np.dot` para transformaciones afines de Matplotlib al guardar figuras con `fig.savefig()`).
+   - **Causa raíz:** Incompatibilidad de la DLL de OpenBLAS de Conda en Windows al llamar a rutinas BLAS/LAPACK de NumPy (`np.dot`). Además, `pyparsing 3.3.3` presentaba una regresión en el parser de nombres de fuentes (`sans-serif`).
+   - **Solución implementada:**
+     - Reinstalación de `numpy==1.26.4` vía wheel oficial de PyPI con binarios de OpenBLAS autocontenidos y estables.
+     - Ajuste de dependencia a `pyparsing<=3.1.4`.
+     - Verificación exitosa de `fig.savefig()` y generación completa de visualizaciones sin errores.
+
+### 10.3 Estado de Ejecución Actual
+- Ejecución completa de `main.py` en marcha:
+  - Preprocesamiento y split en disco finalizados exitosamente.
+  - Regresión Logística entrenada (AUC Test: 0.8357, F1: 0.5516, Recall: 0.7977).
+  - Random Forest en entrenamiento activo.
+
+### 10.4 Próximos Pasos Pendientes (según Pauta del Docente)
+1. **Notebooks de Exploración:** Crear `notebooks/0_exploracion_inicial.ipynb`, `notebooks/1_EDA.ipynb` y `notebooks/2_Modelacion.ipynb` que consuman directamente los módulos de `src/`.
+2. **Documentación Técnica:** Redactar `docs/0_exploracion_inicial.md`, `docs/1_eda.md`, `docs/2_modelo.md` y el informe técnico final en `README.md`.
+3. **Congelamiento de Entorno:** Generar `environment.yml` / `requirements.txt` con las versiones probadas y estables.
+4. **Experimentos de Sesgo:** Incorporar la sección de ablación sin género y reweighing (sección 8) en la documentación y análisis final.
+
+### 10.5 Resultados de la Ejecución End-to-End (`main.py`)
+El pipeline completo se ejecutó de principio a fin en **246.2 segundos** (código de salida 0):
+
+```text
+============================================================
+RESUMEN — Evaluación en conjunto de prueba independiente
+============================================================
+                      Accuracy  Precision  Recall  F1-Score  AUC-ROC  AUC train  Gap AUC  Lift @10% Sobreajuste
+Modelo                                                                                                         
+Regresion Logistica     0.7337     0.4215  0.7977    0.5516   0.8357     0.8404   0.0047       3.01          No
+Random Forest           0.7283     0.4126  0.7631    0.5356   0.8241     0.8403   0.0163       3.16          No
+HistGradientBoosting    0.7327     0.4228  0.8271    0.5595   0.8544     0.8812   0.0268       3.30          No
+```
+
+- **Cumplimiento de KPIs de negocio:**
+  - AUC-ROC $\ge$ 0.80: Cumplido por los 3 modelos (Mejor: HistGradientBoosting con **0.8544**).
+  - Gap AUC train-test $<$ 0.05: Cumplido sin sobreajuste (Gap máximo 0.0268).
+  - Recall $\ge$ 0.75: Cumplido (HistGradientBoosting **0.8271**).
+  - Lift @ 10% $\ge$ 2.0: Cumplido (HistGradientBoosting **3.30x** el azar).
+- **Artefactos generados exitosamente:**
+  - `data/processed/train/` y `data/processed/test/` con `X` e `y`.
+  - `output/modelos/`: `regresion_logistica.joblib`, `random_forest.joblib`, `histgradientboosting.joblib`.
+  - `output/graficos/`:
+    - `01_distribucion_popularidad.png`
+    - `02_distribucion_audio_features.png`
+    - `03_heatmap_correlaciones.png`
+    - `04_outliers_boxplots.png`
+    - `05_popularidad_por_genero.png`
+    - `06_curvas_roc.png`
+    - `07_matrices_confusion.png`
+    - `08_feature_importance_rf.png`
+    - `09_curva_ganancia_acumulada.png`
+
+### 10.6 Limpieza de Archivos Antiguos (Octubre 2026)
+- Se eliminaron las carpetas obsoletas images/ y models/, reemplazadas formalmente por output/graficos/ y output/modelos/.
+- Se eliminaron los datasets intermedios obsoletos de la raíz de data/processed/ (X_model.csv, y_model.csv, X_*_corrected.csv, y_train.csv, y_test.csv, eature_names.csv), quedando ahora centralizados en la estructura oficial data/processed/train/ y data/processed/test/.
+- Se removieron los archivos de prueba temporales (	est.svg, output/graficos/test_pil.png, 	est.pdf).
+- Se actualizaron las referencias en main.py para prescindir de carpetas deprecadas.
