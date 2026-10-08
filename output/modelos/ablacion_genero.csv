@@ -1,4 +1,4 @@
 ,valor
 modelo,HistGradientBoosting
-auc_con_genero,0.8568504170012565
-auc_sin_genero,0.6948227056660639
+auc_con_genero,0.8568456690283
+auc_sin_genero,0.6965416782962018

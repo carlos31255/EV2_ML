@@ -53,15 +53,15 @@ from sklearn.metrics import (roc_curve, precision_recall_curve, roc_auc_score,
 warnings.filterwarnings("ignore")
 matplotlib.rcParams.update({
     "font.family":       "sans-serif",
-    "axes.facecolor":    "#1a1a2e",
-    "figure.facecolor":  "#0f0f1a",
-    "text.color":        "#e0e0e0",
-    "axes.labelcolor":   "#e0e0e0",
-    "xtick.color":       "#e0e0e0",
-    "ytick.color":       "#e0e0e0",
-    "axes.edgecolor":    "#3a3a5c",
-    "grid.color":        "#2a2a4a",
-    "grid.alpha":        0.4,
+    "axes.facecolor":    "#ffffff",
+    "figure.facecolor":  "#f8f9fa",
+    "text.color":        "#212529",
+    "axes.labelcolor":   "#212529",
+    "xtick.color":       "#212529",
+    "ytick.color":       "#212529",
+    "axes.edgecolor":    "#dee2e6",
+    "grid.color":        "#e9ecef",
+    "grid.alpha":        0.8,
 })
 
 SPOTIFY_GREEN = "#1DB954"
@@ -147,7 +147,7 @@ def grafico_hit_rate_genero(df: pd.DataFrame, n: int = 15) -> pd.DataFrame:
     fig, ax = plt.subplots(figsize=(8, 9))
     colores = [RED if v < global_rate else SPOTIFY_GREEN for v in extremos["hit_rate"]]
     ax.barh(extremos.index, extremos["hit_rate"], color=colores, alpha=0.85)
-    ax.axvline(global_rate, color="white", ls="--", label=f"Global = {global_rate:.2f}")
+    ax.axvline(global_rate, color="black", ls="--", label=f"Global = {global_rate:.2f}")
     ax.set_title(f"Hit rate por genero (train): {n} mas bajos y {n} mas altos")
     ax.legend()
     fig.tight_layout()
@@ -160,7 +160,7 @@ def grafico_hit_rate_n_generos(df: pd.DataFrame) -> pd.DataFrame:
            .rename(columns={"mean": "hit_rate", "size": "n"}))
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.bar(t.index.astype(str), t["hit_rate"], color=SPOTIFY_GREEN, alpha=0.85)
-    ax.axhline(df["hit"].mean(), color="white", ls="--")
+    ax.axhline(df["hit"].mean(), color="black", ls="--")
     ax.set_xlabel("Numero de generos")
     ax.set_ylabel("Hit rate")
     ax.set_title("Hit rate segun numero de generos de la cancion")
@@ -217,7 +217,7 @@ def grafico_roc(results: dict, y_test) -> None:
         fpr, tpr, _ = roc_curve(y_test, r["y_proba"])
         ax.plot(fpr, tpr, color=color, linewidth=2,
                 label=f"{nombre} (AUC={r['auc']:.4f})")
-    ax.plot([0, 1], [0, 1], "w--", linewidth=1, alpha=0.5, label="Aleatorio (AUC=0.50)")
+    ax.plot([0, 1], [0, 1], "k--", linewidth=1, alpha=0.5, label="Aleatorio (AUC=0.50)")
     ax.set_xlabel("Tasa de falsos positivos (FPR)")
     ax.set_ylabel("Tasa de verdaderos positivos (TPR)")
     ax.set_title("Curvas ROC — comparativa de modelos", fontsize=12, pad=12)
@@ -232,7 +232,7 @@ def grafico_pr(results: dict, y_test) -> None:
         prec, rec, _ = precision_recall_curve(y_test, r["y_proba"])
         ap = average_precision_score(y_test, r["y_proba"])
         ax.plot(rec, prec, color=color, linewidth=2, label=f"{nombre} (PR-AUC={ap:.4f})")
-    ax.axhline(base, color="white", ls="--", linewidth=1, alpha=0.5,
+    ax.axhline(base, color="black", ls="--", linewidth=1, alpha=0.5,
                label=f"Base = {base:.2f}")
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
@@ -280,7 +280,7 @@ def grafico_importancia_rf(pipe, top_n: int = 20) -> None:
 
     fig, ax = plt.subplots(figsize=(9, 6))
     bars = ax.barh(df_grp.index, df_grp.values, color=SPOTIFY_GREEN, alpha=0.85)
-    ax.bar_label(bars, fmt="%.4f", padding=3, fontsize=8, color="#e0e0e0")
+    ax.bar_label(bars, fmt="%.4f", padding=3, fontsize=8, color="#212529")
     ax.set_title("Importancia de variables — Random Forest (agrupada)", fontsize=12, pad=12)
     ax.set_xlabel("Importancia relativa")
     fig.tight_layout()
@@ -293,8 +293,8 @@ def grafico_ganancia_acumulada(results: dict, y_test) -> None:
     pct  = np.arange(1, n + 1) / n * 100
     base = np.cumsum(np.sort(y)[::-1]) / y.sum() * 100
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(pct, base, "w--", linewidth=1, alpha=0.4, label="Modelo perfecto")
-    ax.plot([0, 100], [0, 100], "w:", linewidth=1, alpha=0.3, label="Aleatorio")
+    ax.plot(pct, base, "k--", linewidth=1, alpha=0.4, label="Modelo perfecto")
+    ax.plot([0, 100], [0, 100], "k:", linewidth=1, alpha=0.3, label="Aleatorio")
     for (nombre, r), color in zip(results.items(), PALETTE):
         idx  = np.argsort(r["y_proba"])[::-1]
         gain = np.cumsum(y[idx]) / y.sum() * 100

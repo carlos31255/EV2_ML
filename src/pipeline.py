@@ -103,41 +103,106 @@ def guardar_processed(train, test, genre_cols):
     print("[pipeline] Guardando datos procesados...")
     os.makedirs(PROC_TRAIN_DIR, exist_ok=True)
     os.makedirs(PROC_TEST_DIR, exist_ok=True)
-    
+
     ALL_FEATURES = FEATURES_SCALE + FEATURES_CAT + FEATURES_BIN + genre_cols
-    
+
     # Train
     train[ALL_FEATURES].to_csv(os.path.join(PROC_TRAIN_DIR, "X_train.csv"), index=False)
     train[[TARGET]].to_csv(os.path.join(PROC_TRAIN_DIR, "y_train.csv"), index=False)
     train[["song_key"]].to_csv(os.path.join(PROC_TRAIN_DIR, "g_train.csv"), index=False)
-    
+    train[["track_id"]].to_csv(os.path.join(PROC_TRAIN_DIR, "id_train.csv"), index=False)
+
     # Test
     test[ALL_FEATURES].to_csv(os.path.join(PROC_TEST_DIR, "X_test.csv"), index=False)
     test[[TARGET]].to_csv(os.path.join(PROC_TEST_DIR, "y_test.csv"), index=False)
-    
+    test[["track_id"]].to_csv(os.path.join(PROC_TEST_DIR, "id_test.csv"), index=False)
+
     pd.Series(ALL_FEATURES).to_csv(os.path.join("data", "processed", "feature_names.csv"), index=False, header=["feature"])
-    
+
     print(f"[pipeline] Processed Train: {len(train)}, Processed Test: {len(test)}")
 
-def run():
+# ----------------------------------------------------------------------------------------------
+# ETAPAS DEL PIPELINE
+#   Etapa 1 (inicio del EDA): generar_split_raw()  -> data/raw/train|test
+#   Etapa 2 (cierre del EDA): generar_processed()  -> data/processed/train|test
+#   Modelacion: NO divide ni transforma; solo consume data/processed (verificar_processed()).
+# El split processed son LAS MISMAS FILAS (mismo orden) que el split raw, ya transformadas.
+# ----------------------------------------------------------------------------------------------
+
+def _rutas_raw():
+    return (os.path.join(RAW_TRAIN_DIR, "raw_train.csv"),
+            os.path.join(RAW_TEST_DIR, "raw_test.csv"))
+
+def generar_split_raw(forzar=False):
+    """
+    Etapa 1: limpieza + deduplicacion agregada + multi-hot + split agrupado por song_key.
+    Guarda data/raw/train/raw_train.csv y data/raw/test/raw_test.csv.
+    Si ya existen y forzar=False se reutilizan (el split es determinista, random_state=42);
+    usa forzar=True si cambiaste la limpieza o el split.
+    """
+    ruta_tr, ruta_te = _rutas_raw()
+    if not forzar and os.path.exists(ruta_tr) and os.path.exists(ruta_te):
+        print("[pipeline] Split raw ya existe: se reutiliza (forzar=True para regenerarlo).")
+        return pd.read_csv(ruta_tr), pd.read_csv(ruta_te)
+
+    df_raw = cargar_datos_raw()
+    df_clean, genre_cols, mlb = pre_procesar_y_deduplicar(df_raw)
+    return split_raw_data(df_clean)
+
+def generar_processed():
+    """
+    Etapa 2: lee SOLO raw_train.csv y raw_test.csv (no vuelve a dividir), aplica log1p, calcula
+    el umbral P80 con TRAIN, define el target y guarda data/processed/train|test.
+    El StandardScaler NO se aplica aqui: va dentro del Pipeline de train.py (se ajusta en cada fold).
+    """
+    ruta_tr, ruta_te = _rutas_raw()
+    if not (os.path.exists(ruta_tr) and os.path.exists(ruta_te)):
+        raise FileNotFoundError("Faltan data/raw/train|test. Ejecuta antes generar_split_raw() "
+                                "(inicio del notebook 1_EDA o python main.py).")
+    train_raw = pd.read_csv(ruta_tr)
+    test_raw = pd.read_csv(ruta_te)
+
+    genre_cols = [c for c in train_raw.columns if c.startswith(GENRE_PREFIX)]
+    assert genre_cols == [c for c in test_raw.columns if c.startswith(GENRE_PREFIX)], \
+        "Las columnas genre_* de raw train y raw test no coinciden"
+    sin_train = [c for c in genre_cols if train_raw[c].sum() == 0]
+    if sin_train:
+        print(f"[pipeline] AVISO: {len(sin_train)} generos sin canciones en train (columnas todo 0): {sin_train[:5]}")
+
+    print("[pipeline] Aplicando transformaciones a Train...")
+    train_proc, threshold = aplicar_transformaciones(train_raw)
+    print("[pipeline] Aplicando transformaciones a Test...")
+    test_proc, _ = aplicar_transformaciones(test_raw, threshold=threshold)
+
+    guardar_processed(train_proc, test_proc, genre_cols)
+
+    # Trazabilidad: processed son las mismas filas, en el mismo orden, que raw
+    ids_tr = pd.read_csv(os.path.join(PROC_TRAIN_DIR, "id_train.csv"))["track_id"]
+    ids_te = pd.read_csv(os.path.join(PROC_TEST_DIR, "id_test.csv"))["track_id"]
+    assert len(ids_tr) == len(train_raw) and (ids_tr.values == train_raw["track_id"].values).all(), "processed train no coincide con raw train"
+    assert len(ids_te) == len(test_raw) and (ids_te.values == test_raw["track_id"].values).all(), "processed test no coincide con raw test"
+    print("[pipeline] Trazabilidad OK: processed = mismas filas que raw (mismo orden).")
+    return {"train_proc": train_proc, "test_proc": test_proc, "genre_cols": genre_cols, "threshold": threshold}
+
+def verificar_processed():
+    """Para Modelacion: comprueba que existe data/processed; si no, avisa que hay que correr el EDA/main."""
+    req = [os.path.join(PROC_TRAIN_DIR, f) for f in ("X_train.csv", "y_train.csv", "g_train.csv")] + \
+          [os.path.join(PROC_TEST_DIR, f) for f in ("X_test.csv", "y_test.csv")]
+    faltan = [r for r in req if not os.path.exists(r)]
+    if faltan:
+        raise FileNotFoundError("Falta data/processed (" + ", ".join(os.path.basename(f) for f in faltan) +
+                                "). Ejecuta el notebook 1_EDA completo o python main.py.")
+    print("[pipeline] data/processed disponible.")
+
+def run(forzar_raw=False):
+    """Etapa 1 + etapa 2 (lo usa main.py)."""
     print("=" * 60)
     print("PIPELINE - Preprocesamiento Spotify (Raw & Processed)")
     print("=" * 60)
-    
-    df_raw = cargar_datos_raw()
-    df_clean, genre_cols, mlb = pre_procesar_y_deduplicar(df_raw)
-    
-    train_raw, test_raw = split_raw_data(df_clean)
-    
-    print("[pipeline] Aplicando transformaciones a Train...")
-    train_proc, threshold = aplicar_transformaciones(train_raw)
-    
-    print("[pipeline] Aplicando transformaciones a Test...")
-    test_proc, _ = aplicar_transformaciones(test_raw, threshold=threshold)
-    
-    guardar_processed(train_proc, test_proc, genre_cols)
+    generar_split_raw(forzar=forzar_raw)
+    res = generar_processed()
     print("[pipeline] Finalizado exitosamente.")
-    return {"train_proc": train_proc, "test_proc": test_proc, "genre_cols": genre_cols}
+    return res
 
 if __name__ == "__main__":
     run()
