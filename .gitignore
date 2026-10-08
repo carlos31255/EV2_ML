@@ -220,3 +220,6 @@ __marimo__/
 # Datasets intermedios obsoletos
 data/processed/X_*.csv
 data/processed/y_*.csv
+
+eda.md
+notas_EV2_Spotify.md

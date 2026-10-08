@@ -1,8 +1,8 @@
 """
 src/metricas.py
 ---------------
-Funciones de evaluacion de modelos: AUC, F1, Recall, Precision, Accuracy,
-Lift acumulado @ top-10%, gap de sobreajuste.
+Funciones de evaluacion de modelos: AUC, PR-AUC, F1, Recall, Precision,
+Accuracy, Lift acumulado @ top-10%, gap de sobreajuste.
 
 Uso:
   from src.metricas import evaluar_modelo, tabla_comparativa
@@ -12,7 +12,8 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import (
     roc_auc_score, f1_score, recall_score,
-    precision_score, accuracy_score, classification_report
+    precision_score, accuracy_score, average_precision_score,
+    classification_report
 )
 
 
@@ -21,7 +22,7 @@ def evaluar_modelo(pipe, X_train, y_train, X_test, y_test, nombre: str) -> dict:
     Calcula las metricas principales de un pipeline entrenado.
 
     Retorna un dict con:
-        accuracy, precision, recall, f1, auc (test),
+        accuracy, precision, recall, f1, auc (test), pr_auc,
         auc_train, gap_auc, lift_top10, y_proba, y_pred
     """
     proba_test  = pipe.predict_proba(X_test)[:, 1]
@@ -47,6 +48,7 @@ def evaluar_modelo(pipe, X_train, y_train, X_test, y_test, nombre: str) -> dict:
         "f1":        f1_score(y_test, pred_test, zero_division=0),
         "auc":       auc_test,
         "auc_train": auc_train,
+        "pr_auc":    average_precision_score(y_test, proba_test),
         "gap_auc":   gap_auc,
         "lift_top10": lift_top10,
         "y_proba":   proba_test,
@@ -62,7 +64,7 @@ def tabla_comparativa(results: dict) -> pd.DataFrame:
         results: dict {nombre_modelo: dict_metricas}
     Returns:
         DataFrame con columnas: Modelo, Accuracy, Precision, Recall, F1, AUC-ROC,
-                                AUC train, Gap AUC, Lift@10%, Sobreajuste
+                                PR-AUC, AUC train, Gap AUC, Lift@10%, Sobreajuste
     """
     filas = []
     for nombre, r in results.items():
@@ -73,6 +75,7 @@ def tabla_comparativa(results: dict) -> pd.DataFrame:
             "Recall":      round(r["recall"],    4),
             "F1-Score":    round(r["f1"],        4),
             "AUC-ROC":     round(r["auc"],       4),
+            "PR-AUC":      round(r["pr_auc"],    4),
             "AUC train":   round(r["auc_train"], 4),
             "Gap AUC":     round(r["gap_auc"],   4),
             "Lift @10%":   round(r["lift_top10"],2),

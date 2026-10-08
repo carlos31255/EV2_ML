@@ -1,4 +1,0 @@
-Modelo,Accuracy,Precision,Recall,F1-Score,AUC-ROC,AUC train,Gap AUC,Lift @10%,Sobreajuste
-Regresion Logistica,0.7337,0.4215,0.7977,0.5516,0.8357,0.8404,0.0047,3.01,No
-Random Forest,0.7283,0.4126,0.7631,0.5356,0.8241,0.8403,0.0163,3.16,No
-HistGradientBoosting,0.7327,0.4228,0.8271,0.5595,0.8544,0.8812,0.0268,3.3,No

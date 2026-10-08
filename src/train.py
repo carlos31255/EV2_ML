@@ -1,29 +1,19 @@
 """
 src/train.py
 ------------
-Entrena los tres modelos supervisados (Pipeline sklearn) sobre los datos
-procesados y guarda los pipelines en output/modelos/.
-
-Modelos:
-  1. Regresion Logistica  — baseline interpretable
-  2. Random Forest        — ensamble principal
-  3. HistGradientBoosting — ensamble avanzado (mejor AUC en EV2)
-
-Preprocesamiento (dentro del Pipeline, sin fuga):
-  - StandardScaler en variables continuas
-  - OneHotEncoder en variables categoricas nominales
-  - Variables binarias y genre_* sin transformar
+Entrena los modelos supervisados con validacion cruzada agrupada por cancion
+y los guarda en output/modelos/. NO evalua en test (eso es src/test.py).
+El mejor modelo se elige por AUC de validacion cruzada, no por test.
+Ademas mide el aporte del genero (ablacion: mejor modelo con y sin genero, por CV).
 
 Uso:
   python -m src.train
-  from src.train import run
 """
 
 import os
 import time
 import joblib
 import pandas as pd
-import numpy as np
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
@@ -32,26 +22,14 @@ from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassif
 from sklearn.model_selection import StratifiedGroupKFold, cross_validate
 
 from src.pipeline import FEATURES_SCALE, FEATURES_CAT, FEATURES_BIN
-from src.metricas import evaluar_modelo, tabla_comparativa, verificar_kpis
 
-# ── Constantes ────────────────────────────────────────────────────────────────
-
-TRAIN_DIR   = os.path.join("data", "processed", "train")
-TEST_DIR    = os.path.join("data", "processed", "test")
-OUTPUT_DIR  = os.path.join("output", "modelos")
-SEED        = 42
-CV_FOLDS    = 5
+TRAIN_DIR  = os.path.join("data", "processed", "train")
+OUTPUT_DIR = os.path.join("output", "modelos")
+SEED       = 42
+CV_FOLDS   = 5
 
 
-# ── Preprocesador ─────────────────────────────────────────────────────────────
-
-def make_preprocessor(features_genre: list) -> ColumnTransformer:
-    """
-    Construye el ColumnTransformer para el Pipeline:
-      - Continuas  -> StandardScaler
-      - Nominales  -> OneHotEncoder (handle_unknown='ignore')
-      - Binarias + genre_*  -> passthrough
-    """
+def make_preprocessor(features_genre) -> ColumnTransformer:
     return ColumnTransformer(
         transformers=[
             ("scale", StandardScaler(), FEATURES_SCALE),
@@ -63,15 +41,6 @@ def make_preprocessor(features_genre: list) -> ColumnTransformer:
 
 
 def definir_modelos(preprocessor: ColumnTransformer) -> dict:
-    """
-    Devuelve los tres Pipelines con sus hiperparametros justificados.
-    Justificacion de la configuracion:
-      - class_weight='balanced': dataset desbalanceado ~80/20 (hit/no-hit)
-      - LR max_iter=2000:        convergencia con multi-hot (128 features)
-      - RF max_depth=15, min_samples_leaf=10: limitar sobreajuste (gap v1=0.106)
-      - HistGB lr=0.05, max_iter=300, max_depth=6: menor tasa de aprendizaje
-                                                    para estabilidad
-    """
     return {
         "Regresion Logistica": Pipeline([
             ("pre", preprocessor),
@@ -80,55 +49,60 @@ def definir_modelos(preprocessor: ColumnTransformer) -> dict:
         ]),
         "Random Forest": Pipeline([
             ("pre", preprocessor),
-            ("clf", RandomForestClassifier(
-                n_estimators=200, max_depth=15, min_samples_leaf=10,
-                class_weight="balanced", random_state=SEED, n_jobs=1))
+            ("clf", RandomForestClassifier(n_estimators=200, max_depth=15,
+                                           min_samples_leaf=10, class_weight="balanced",
+                                           random_state=SEED, n_jobs=1))
         ]),
         "HistGradientBoosting": Pipeline([
             ("pre", preprocessor),
-            ("clf", HistGradientBoostingClassifier(
-                max_iter=300, learning_rate=0.05, max_depth=6,
-                class_weight="balanced", random_state=SEED))
+            ("clf", HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05,
+                                                   max_depth=6, class_weight="balanced",
+                                                   random_state=SEED))
         ]),
     }
 
 
-# ── Entrenamiento ─────────────────────────────────────────────────────────────
+def ablacion_genero(nombre, X_train, y_train, g_train, cv, auc_con_genero) -> dict:
+    """
+    Mismo modelo sin las columnas genre_* (se descartan con remainder='drop').
+    Devuelve el AUC de CV con y sin genero; no usa el conjunto de test.
+    """
+    pipe_sin = definir_modelos(make_preprocessor([]))[nombre]
+    sc = cross_validate(pipe_sin, X_train, y_train, groups=g_train, cv=cv,
+                        scoring={"auc": "roc_auc"}, n_jobs=1)
+    return {
+        "modelo":         nombre,
+        "auc_con_genero": float(auc_con_genero),
+        "auc_sin_genero": float(sc["test_auc"].mean()),
+    }
+
 
 def run() -> dict:
-    """
-    Carga los datos procesados, entrena los modelos con CV y evaluacion final
-    en test, guarda los pipelines y retorna los resultados.
-    """
     print("=" * 60)
-    print("TRAIN — Entrenamiento de modelos supervisados")
+    print("TRAIN - Entrenamiento de modelos supervisados")
     print("=" * 60)
 
-    # Cargar datos
     feat_names = pd.read_csv(os.path.join("data", "processed", "feature_names.csv"))
     features_genre = [f for f in feat_names["feature"] if f.startswith("genre_")]
 
     X_train = pd.read_csv(os.path.join(TRAIN_DIR, "X_train.csv"))
     y_train = pd.read_csv(os.path.join(TRAIN_DIR, "y_train.csv")).squeeze()
     g_train = pd.read_csv(os.path.join(TRAIN_DIR, "g_train.csv")).squeeze()
-    X_test  = pd.read_csv(os.path.join(TEST_DIR,  "X_test.csv"))
-    y_test  = pd.read_csv(os.path.join(TEST_DIR,  "y_test.csv")).squeeze()
 
-    print(f"[train] X_train: {X_train.shape} | X_test: {X_test.shape}")
-    print(f"[train] Hit rate train: {y_train.mean()*100:.1f}% | test: {y_test.mean()*100:.1f}%")
+    print(f"[train] X_train: {X_train.shape} | Hit rate train: {y_train.mean()*100:.1f}%")
 
     preprocessor = make_preprocessor(features_genre)
     modelos      = definir_modelos(preprocessor)
     cv           = StratifiedGroupKFold(n_splits=CV_FOLDS, shuffle=True, random_state=SEED)
 
-    results_cv  = {}
-    results_test = {}
+    results_cv = {}
+    resumen    = {}
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     for nombre, pipe in modelos.items():
         print(f"\n[train] Entrenando: {nombre} ...")
         t0 = time.time()
 
-        # Validacion cruzada (5-fold, agrupado por cancion)
         cv_scores = cross_validate(
             pipe, X_train, y_train, groups=g_train, cv=cv,
             scoring={"auc": "roc_auc", "f1": "f1", "recall": "recall", "precision": "precision"},
@@ -136,59 +110,43 @@ def run() -> dict:
         )
         results_cv[nombre] = cv_scores
 
-        # Entrenamiento final sobre todo el train
         pipe.fit(X_train, y_train)
 
-        # Evaluacion en test
-        metricas = evaluar_modelo(pipe, X_train, y_train, X_test, y_test, nombre)
-        gap_cv   = cv_scores["train_auc"].mean() - cv_scores["test_auc"].mean()
-        metricas["gap_auc_cv"] = gap_cv
-        results_test[nombre]   = metricas
+        resumen[nombre] = {
+            "auc_cv":       cv_scores["test_auc"].mean(),
+            "auc_train_cv": cv_scores["train_auc"].mean(),
+            "gap_auc_cv":   cv_scores["train_auc"].mean() - cv_scores["test_auc"].mean(),
+            "f1_cv":        cv_scores["test_f1"].mean(),
+            "recall_cv":    cv_scores["test_recall"].mean(),
+            "precision_cv": cv_scores["test_precision"].mean(),
+        }
+        r = resumen[nombre]
+        print(f"  AUC CV: {r['auc_cv']:.4f} | Gap CV: {r['gap_auc_cv']:.4f} | "
+              f"{time.time() - t0:.1f}s")
 
-        elapsed = time.time() - t0
-        print(f"  AUC test: {metricas['auc']:.4f} | F1: {metricas['f1']:.4f} | "
-              f"Recall: {metricas['recall']:.4f} | Gap CV: {gap_cv:.4f} | {elapsed:.1f}s")
-
-        # Guardar pipeline
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
         nombre_archivo = nombre.lower().replace(" ", "_")
         joblib.dump(pipe, os.path.join(OUTPUT_DIR, f"{nombre_archivo}.joblib"))
-        print(f"  Guardado: {OUTPUT_DIR}/{nombre_archivo}.joblib")
 
-    # Tabla resumen
+    tabla_cv = pd.DataFrame(resumen).T
     print("\n" + "=" * 60)
-    print("RESUMEN — Evaluacion en conjunto de prueba")
-    print("=" * 60)
-    tabla = tabla_comparativa(results_test)
-    print(tabla.to_string())
+    print(tabla_cv.round(4).to_string())
+    tabla_cv.to_csv(os.path.join(OUTPUT_DIR, "resultados_cv.csv"))
 
-    # Guardar tabla
-    tabla.to_csv(os.path.join(OUTPUT_DIR, "resultados_modelos.csv"))
+    mejor = tabla_cv["auc_cv"].idxmax()
+    joblib.dump(modelos[mejor], os.path.join(OUTPUT_DIR, "best_model.joblib"))
+    print(f"\n[train] Mejor modelo por AUC en CV: {mejor}")
 
-    # Mejor modelo por AUC
-    mejor = max(results_test, key=lambda n: results_test[n]["auc"])
-    print(f"\nMejor modelo (AUC-ROC): {mejor} "
-          f"(AUC={results_test[mejor]['auc']:.4f}, "
-          f"F1={results_test[mejor]['f1']:.4f}, "
-          f"Recall={results_test[mejor]['recall']:.4f})")
+    # Ablacion: peso del genero en el mejor modelo (AUC de CV con y sin genero)
+    print(f"[train] Ablacion de genero sobre {mejor} ...")
+    abl = ablacion_genero(mejor, X_train, y_train, g_train, cv, resumen[mejor]["auc_cv"])
+    print(f"[train] AUC CV con genero: {abl['auc_con_genero']:.4f} | "
+          f"sin genero: {abl['auc_sin_genero']:.4f} | "
+          f"aporte: {abl['auc_con_genero'] - abl['auc_sin_genero']:+.4f}")
+    pd.Series(abl).to_csv(os.path.join(OUTPUT_DIR, "ablacion_genero.csv"), header=["valor"])
 
-    # Guardar mejor modelo tambien como best_model.joblib
-    mejor_pipe = modelos[mejor]
-    joblib.dump(mejor_pipe, os.path.join(OUTPUT_DIR, "best_model.joblib"))
-
-    # KPIs
-    print("\n" + "=" * 60)
-    print("KPIs de negocio")
-    print("=" * 60)
-    kpis = verificar_kpis(results_test)
-    print(kpis.pivot(index="Modelo", columns="KPI", values="Cumple").to_string())
-
-    print("\n[train] Entrenamiento completado.")
-    return {"results_test": results_test, "results_cv": results_cv, "mejor": mejor}
+    return {"results_cv": results_cv, "tabla_cv": tabla_cv, "mejor": mejor,
+            "ablacion_genero": abl}
 
 
 if __name__ == "__main__":
     run()
-
-
-
