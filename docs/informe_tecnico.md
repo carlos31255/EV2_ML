@@ -56,10 +56,10 @@ El peso del género musical domina las predicciones. Un análisis de ablación (
 - **AUC CV (Train) con género:** 0.8561
 - **AUC CV (Train) sin género:** 0.6946
 - **Aporte neto del género:** +0.1615 AUC
-El modelo captura un *recall* alto en los géneros dominantes del mercado, alineándose a cómo funciona realmente la distribución de popularidad masiva en la plataforma.
+El modelo captura un *recall* alto en los géneros dominantes del mercado, alineándose a cómo funciona realmente la distribución de popularidad masiva en la plataforma. Sin embargo, esto genera una disparidad notable: a nivel individual, **56 de los 109 géneros evaluados (51%) no alcanzan el KPI de 0.75**, concentrándose el acierto en géneros masivos (recall > 0.90) frente a géneros de nicho (recall ~0.15).
 
 ### 7.3. Trade-Off de Umbral
-El modelo por defecto evalúa el umbral de decisión en el punto 0.50, lo que maximiza el Recall (0.82) para no perder casi ningún hit potencial. Sin embargo, para un sello con presupuesto limitado de marketing, este umbral puede subirse artificialmente. Esto sacrificará algo de Recall, pero elevará drásticamente la Precisión (es decir, cada dólar invertido tendrá mayor certeza de ir a un hit seguro).
+El modelo por defecto evalúa el umbral de decisión en el punto 0.50, lo que maximiza el Recall (0.833) para no perder casi ningún hit potencial. Sin embargo, para un sello con presupuesto limitado de marketing, este umbral puede subirse artificialmente. Esto sacrificará algo de Recall, pero elevará drásticamente la Precisión (es decir, cada dólar invertido tendrá mayor certeza de ir a un hit seguro).
 
 ## 8. Limitaciones y Consideraciones Finales
 Para interpretar correctamente el modelo en un entorno productivo real, deben considerarse las siguientes limitaciones detectadas:

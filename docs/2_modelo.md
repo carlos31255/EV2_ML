@@ -61,7 +61,7 @@ El AUC de test del mejor modelo (0,8569) es casi igual al de CV (0,8561): no hay
 | **Ablación** (HGB, CV agrupada) | AUC **0,856 con género → 0,695 sin género** (aporte +0,162) |
 | **Importancia por permutación** (test) | Bloque de género: caída de AUC **0,303**; siguiente variable (`instrumentalness_log`): 0,009 |
 | **Solo audio** (test, columnas de género anuladas) | AUC 0,693 · recall 0,687 · precisión 0,304 · **lift 1,96 (bajo el KPI de 2,0)** |
-| **K-Means** (solo audio, k=2, silhouette 0,240) | Los clusters separan estilos (acústico/tranquilo frente a enérgico), pero su hit rate es casi igual: 0,191 frente a 0,210 |
+| **K-Means** (solo audio, k=2 y k=7 estable) | Los clusters separan estilos sonoros pero no el éxito: con k=7 los hit rates van de 0,10 a 0,24 y usar solo el cluster da un AUC de apenas 0,576 |
 
 **Lectura:** el KPI de AUC se cumple **gracias al género**. Con solo audio no se alcanza el 0,80.
 
@@ -106,6 +106,8 @@ Cada prueba reentrena el mejor modelo (mismos hiperparámetros) cambiando solo u
 | 3 | **Target relativo al género** (hit = popularidad ≥ P80 del género; hit rate 0,198) | AUC con género 0,657 · solo audio 0,578 · lift 1,89 / 1,44. Disparidad de recall entre géneros baja (desv. estándar 0,389 → 0,175; correlación con hit rate 0,94 → 0,24) pero detecta peor (77% de géneros bajo 0,75) | **No se adopta como modelo final:** cambia el problema de negocio ("¿hit dentro de su género?") y rinde mucho peor. Se usa como medida de la señal del audio sin género (AUC ≈ 0,58–0,66) |
 | 4 | **Multi-hot normalizado** (cada fila suma 1) en lugar de binario | AUC +0,002 en los tres modelos (LR 0,8377 · RF 0,8274 · HGB 0,8589); recall RF 0,757 → **0,735**; canciones de 2 géneros marcadas 57% → 60% | **No se adopta:** ganancia dentro del ruido, no cambia el patrón, empeora un KPI y obliga a re-ejecutar todo. Se mantiene **multi-hot binario** |
 | 5 | **Entrenar y evaluar solo con canciones de 1 género** | AUC 0,863 | Evidencia de que el desempeño no depende del número de géneros |
+| 6 | **Política de umbral suavizado por género ($\lambda=0,1$)** | Sube recall en géneros pobres de 0,148 a 0,487 y recall macro a 0,641 manteniendo el global en 0,795 (cumple KPI), a costa de precisión (0,425 → 0,373) | **Opción analítica evaluada (sección 10b):** viable para equidad entre géneros, pero se mantiene 0,5 oficial para no sacrificar precisión en campañas comerciales |
+| 7 | **Búsqueda de hiperparámetros (10 candidatos en CV)** | Mejor configuración sube AUC en +0,008 (0,8569 → 0,8646) pero aumenta el gap a 0,039 | **Se mantiene configuración oficial:** ganancia marginal a costa de mayor sobreajuste |
 
 ### ¿El modelo premia a las canciones con más géneros?
 
@@ -118,11 +120,10 @@ El multi-hot lleva implícito el número de géneros (la suma de unos por fila),
 
 **Conclusión:** el modelo marca más canciones multigénero porque suelen pertenecer a géneros de hit rate alto (efecto de composición), no porque el número de géneros sostenga el resultado.
 
-### Alternativas descartadas por diseño (no probadas)
+### Alternativas descartadas por diseño
 
 - Selección del modelo con test: descartado para evitar optimismo (se usa CV agrupada).
 - Escalado en `processed`: descartado (filtra información entre folds).
-- Umbral de decisión por género calibrado con train: **no se probó**; es la mitigación más simple pendiente (emparejaría el recall entre géneros a costa de la precisión).
 
 ### Decisión final
 
