@@ -10,9 +10,11 @@
 
 ## Descripción del proyecto
 
-Este proyecto aplica la metodología **CRISP-DM** para construir un modelo de Machine Learning que predice si una canción en Spotify será un **hit comercial** (popularidad ≥ percentil 80, calculado solo con el conjunto de entrenamiento: 52 puntos tras deduplicar), usando únicamente sus características de audio y género musical.
+Este proyecto aplica la metodología **CRISP-DM** para construir un modelo de Machine Learning que predice si una canción en Spotify será un **hit comercial** (popularidad ≥ percentil 80, calculado solo con el conjunto de entrenamiento: 52 puntos tras deduplicar), usando sus características de audio, su género musical y variables simples del texto (número de artistas y marcas del título, sin la identidad del artista).
 
 **Pregunta de negocio:** *¿Debe un sello discográfico invertir presupuesto de promoción en esta canción?*
+
+**Objetivo:** construir un modelo supervisado de clasificación binaria (hit = 1 / no hit = 0) que ordene el catálogo según su probabilidad de ser hit, para priorizar campañas de promoción, con un recall repartido de forma más pareja entre géneros y sin sobre-marcar canciones multigénero. Se comparan tres modelos supervisados (Regresión Logística, Random Forest y HistGradientBoosting) y se aplica K-Means como técnica no supervisada para segmentar canciones por su perfil de audio. El detalle (objetivos específicos, CRISP-DM e impacto ético) está en [`docs/informe_tecnico.md`](docs/informe_tecnico.md).
 
 **KPIs de negocio:**
 
@@ -42,18 +44,18 @@ EV2_Machine_learning/
 ├── notebooks/
 │   ├── 0_exploracion_inicial.ipynb      # Inspección inicial y EDA básico sobre datos crudos
 │   ├── 1_EDA.ipynb                      # EDA profundo sobre train/test raw y análisis de sesgos
-│   └── 2_Modelacion.ipynb               # Entrenamiento, evaluación y métricas
+│   └── 2_Modelacion.ipynb               # Entrenamiento, evaluación, política de umbral, K-Means y sesgos
 ├── src/
 │   ├── pipeline.py                      # Limpieza, deduplicación, multi-hot, split y transformaciones
-│   ├── train.py                         # Validación cruzada y entrenamiento de los modelos
-│   ├── test.py                          # Evaluación final en test y verificación de KPIs
-│   ├── metricas.py                      # AUC, PR-AUC, precision, recall, F1, lift, gap, KPIs
+│   ├── train.py                         # Validación cruzada, entrenamiento y calibración de la política
+│   ├── test.py                          # Evaluación final en test, KPIs y equidad
+│   ├── metricas.py                      # AUC, PR-AUC, precision, recall, F1, lift, gap, KPIs y política de umbral
 │   └── graficos.py                      # Todas las visualizaciones (EDA y modelos)
 ├── output/
 │   ├── graficos/                        # Gráficos generados
 │   └── modelos/                         # Modelos (.joblib) y reportes de métricas (.csv)
 ├── main.py                              # Ejecuta el flujo completo
-├── environment.yml                      # Entorno conda reproducible (numpy 1.26 + pandas 2.2)
+├── environment.yml                      # Entorno conda reproducible (versiones fijadas)
 ├── requirements.txt                     # Alternativa pip
 ├── notas_EV2_Spotify.md                 # Bitácora técnica y registro de decisiones
 └── README.md                            # Este archivo
@@ -104,9 +106,9 @@ Ejecuta, en este orden estricto: **pipeline → train → test → gráficos**.
 
 | Paso | Módulo | Qué hace |
 |---|---|---|
-| 1 | `src/pipeline.py` | Descarta nulos, deduplica por `track_id`, codifica géneros (multi-hot), hace el split y aplica las transformaciones. |
-| 2 | `src/train.py` | Entrena los 3 modelos con validación cruzada y elige el mejor por AUC de CV. |
-| 3 | `src/test.py` | Evalúa en el conjunto de prueba y verifica los 4 KPIs de negocio. |
+| 1 | `src/pipeline.py` | Descarta nulos, deduplica por `track_id`, codifica géneros (multi-hot), hace el split y aplica las transformaciones (`log1p` y variables de texto). |
+| 2 | `src/train.py` | Entrena los 3 modelos con validación cruzada, elige el mejor por AUC de CV y calibra la política de umbral con probabilidades fuera de muestra. |
+| 3 | `src/test.py` | Evalúa en el conjunto de prueba (los 3 modelos con umbral 0.5 y el modelo oficial con su política), verifica los 4 KPIs y mide la equidad por género. |
 | 4 | `src/graficos.py` | Genera las visualizaciones en `output/graficos/`. |
 
 Cada módulo también se puede ejecutar por separado: `python -m src.pipeline`, `python -m src.train`, `python -m src.test`.
@@ -149,6 +151,10 @@ rm -rf data/processed data/raw/train data/raw/test output/modelos output/grafico
 python main.py
 ```
 
+`output/graficos/*` borra todos los gráficos, incluidos los del K-Means ampliado (`17_kmeans_criterios_k.png`, `18_kmeans_pca_clusters.png`, `19_kmeans_generos.png`) y el de la política de umbral (`20_politica_umbral.png`). `main.py` regenera solo los gráficos 01 a 12; el 00 lo genera `0_exploracion_inicial.ipynb` y del 13 al 20 los genera `2_Modelacion.ipynb`. Por eso, después de `python main.py`, hay que ejecutar los tres notebooks en orden con **Restart & Run All**. La grilla de hiperparámetros de la sección 11 tarda ≈ 25 minutos la primera vez; si `output/modelos/busqueda_hiperparametros.csv` existe, se reutiliza (como este comando borra `output/modelos`, se vuelve a calcular).
+
+**Qué es determinista y qué no.** El split y el umbral P80 se reproducen exactamente, y también el AUC, el gap y el lift de test. Los resultados que dependen de la validación cruzada (AUC de CV, ablación, búsqueda de hiperparámetros y las probabilidades fuera de muestra con que `src/train.py` calibra la política de umbral) pueden variar en el tercer decimal entre sistemas operativos por diferencias numéricas en el entrenamiento. Por eso el recall y la precisión del modelo oficial pueden moverse levemente entre Windows y Linux. Las cifras documentadas son de una corrida completa en Linux; las conclusiones no cambian.
+
 El dataset original (`data/raw/Spotify_Tracks_Dataset.csv`) no se borra. Si no está en el repositorio, descárgalo desde HuggingFace y guárdalo con ese nombre en `data/raw/`.
 
 ---
@@ -185,30 +191,35 @@ jupyter notebook
 
 ---
 
-## Resultados principales (EV2 — Versión corregida)
+## Resultados principales
 
 Evaluación en conjunto de prueba con **18.034 canciones no vistas** (sin fuga de datos entre train y test).
 
-Los resultados detallados de los modelos y la verificación de los KPIs se encuentran en el informe técnico y en los archivos generados durante la ejecución: `output/modelos/resultados_test.csv` y `output/modelos/kpis_cumplidos.csv`.
+**Modelo oficial:** HistGradientBoosting (profundidad libre, 31 hojas, `min_samples_leaf=20`, L2 = 1) con variables de audio, género y texto, más una **política de umbral por género y número de géneros** calibrada en train (`src/metricas.py`). Cumple los cuatro KPIs: AUC 0.866, gap 0.030, recall 0.791 y lift@10% 3.43. Frente a umbral 0.5, la política sube el recall en géneros de nicho de 0.14 a 0.35 y baja el sobre-marcado de canciones con 3 o más géneros de 2.18 a 1.74 veces su tasa de hits, a cambio de ≈ 3 puntos de precisión (0.458 → 0.423).
+
+El detalle está en el informe técnico y en los archivos generados durante la ejecución: `output/modelos/resultados_test.csv`, `output/modelos/kpis_cumplidos.csv` y `output/modelos/equidad_test.csv`.
 
 - **Umbral hit/no-hit:** popularidad ≥ 52 pts (percentil 80 calculado estrictamente sobre train y aplicado a test).
 - **Deduplicación sin pérdida de géneros:** una fila por `track_id`, con la popularidad máxima entre copias y todos sus géneros consolidados.
 - **Codificación de género:** multi-hot (`MultiLabelBinarizer`), que conserva el 18% de canciones multigénero que se perdería con un `drop_duplicates` directo.
 - **Split por canción:** `GroupShuffleSplit` (80% train / 20% test, `random_state=42`) agrupado por `song_key` (artista + título), eliminando la fuga por canciones multigénero y por versiones.
-- **Selección del modelo:** por AUC de validación cruzada agrupada (`StratifiedGroupKFold`), no por test.
+- **Selección del modelo:** por AUC de validación cruzada agrupada (`StratifiedGroupKFold`), no por test. La política de umbral se calibra con probabilidades fuera de muestra de train.
 - **Preprocesamiento integrado:** escalado y one-hot encapsulados en `Pipeline` de scikit-learn, de modo que se ajustan en cada fold.
 
 ---
 
 ## Limitaciones del modelo
 
-- **El género domina la señal.** Usando solo el hit rate del género, el AUC es 0.837 en train y 0.831 en test, por encima del KPI de 0.80. Por eso el peso del género se mide con una ablación (el valor que devuelve `train.py` es AUC de validación cruzada con y sin género, no de test): cumplir el KPI no prueba por sí solo que las características de audio aporten.
+- **El género domina la señal.** Usando solo el hit rate del género, el AUC es 0.837 en train y 0.831 en test, por encima del KPI de 0.80. Por eso el peso del género se mide con una ablación (el valor que devuelve `train.py` es AUC de validación cruzada con y sin género, no de test): cumplir el KPI no prueba por sí solo que las características de audio aporten. Sin género, el AUC de CV cae de 0.868 a 0.707.
+- **Sesgo entre géneros reducido, no eliminado.** La política de umbral sube el recall en géneros de nicho de 0.14 a 0.35, pero el 51% de los géneros sigue bajo el KPI de 0.75, y el 10% superior del ranking (la campaña recomendada) sigue concentrado en géneros populares. Ordenar por margen sobre el umbral del género reparte mejor la campaña (lift 2.44); queda como alternativa.
+- **Trato distinto según el género.** Con la política, dos canciones con la misma probabilidad pueden recibir decisiones distintas según su género: es una decisión de negocio explícita.
 - **Muestreo uniforme por género.** El dataset tiene la misma cantidad de filas por género, así que las tasas reflejan el muestreo y no el mercado real de Spotify; los resultados no se extrapolan sin cuidado.
 - **Popularidad 0.** El 10.3% de las canciones tiene popularidad 0, concentrada en ciertos géneros (jazz, iranian, romance, soul, country, latin y rock superan el 50%). No se eliminan, sino que cuentan como "no hit"; pueden reflejar canciones sin dato más que canciones realmente impopulares.
 - **Etiqueta ambigua en versiones.** Hay canciones que son hit en una versión y no hit en otra (1.061 combinaciones artista+título con versiones en ambas clases).
 - **Split por canción, no por artista.** El 72.1% de las canciones de test tiene su artista también en train, y los artistas con varias canciones tienden a ser hit o no hit en bloque (63.4%), por lo que las métricas pueden ser algo optimistas.
 - **Umbral relativo.** "Hit" se define como el 20% más popular del dataset (52 puntos en train), no como un criterio comercial absoluto.
-- **`n_generos` excluida.** Se deja fuera de las features por ser un posible indicador indirecto de popularidad.
+- **`n_generos` excluida.** Se deja fuera de las features por ser un posible indicador indirecto de popularidad. Como el multi-hot lo lleva implícito, la política de umbral corrige el sobre-marcado de canciones con 3 o más géneros.
+- **Random Forest** no cumple el KPI de recall con umbral 0.5 (0.686); no es el modelo elegido.
 
 ---
 

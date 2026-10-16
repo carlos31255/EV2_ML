@@ -4,7 +4,9 @@ src/train.py
 Entrena los modelos supervisados con validacion cruzada agrupada por cancion
 y los guarda en output/modelos/. NO evalua en test (eso es src/test.py).
 El mejor modelo se elige por AUC de validacion cruzada, no por test.
-Ademas mide el aporte del genero (ablacion: mejor modelo con y sin genero, por CV).
+Ademas mide el aporte del genero (ablacion: mejor modelo con y sin genero, por CV) y
+calibra la politica de umbral del modelo final (src/metricas.py) con probabilidades
+fuera de muestra de train.
 
 Uso:
   python -m src.train
@@ -19,9 +21,10 @@ from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
-from sklearn.model_selection import StratifiedGroupKFold, cross_validate
+from sklearn.model_selection import StratifiedGroupKFold, cross_validate, cross_val_predict
 
-from src.pipeline import FEATURES_SCALE, FEATURES_CAT, FEATURES_BIN
+from src.pipeline import FEATURES_SCALE, FEATURES_CAT, FEATURES_BIN, FEATURES_TEXT_NUM, FEATURES_TEXT_BIN
+from src.metricas import ajustar_politica
 
 TRAIN_DIR  = os.path.join("data", "processed", "train")
 OUTPUT_DIR = os.path.join("output", "modelos")
@@ -32,9 +35,9 @@ CV_FOLDS   = 5
 def make_preprocessor(features_genre) -> ColumnTransformer:
     return ColumnTransformer(
         transformers=[
-            ("scale", StandardScaler(), FEATURES_SCALE),
+            ("scale", StandardScaler(), FEATURES_SCALE + FEATURES_TEXT_NUM),
             ("ohe",   OneHotEncoder(handle_unknown="ignore", sparse_output=False), FEATURES_CAT),
-            ("pass",  "passthrough", FEATURES_BIN + features_genre),
+            ("pass",  "passthrough", FEATURES_BIN + FEATURES_TEXT_BIN + features_genre),
         ],
         remainder="drop"
     )
@@ -44,8 +47,9 @@ def definir_modelos(preprocessor: ColumnTransformer) -> dict:
     return {
         "Regresion Logistica": Pipeline([
             ("pre", preprocessor),
+            # lbfgs: mismo AUC que saga y ~17 veces mas rapido con las variables de texto
             ("clf", LogisticRegression(max_iter=2000, class_weight="balanced",
-                                       random_state=SEED, solver="saga", n_jobs=1))
+                                       random_state=SEED, solver="lbfgs"))
         ]),
         "Random Forest": Pipeline([
             ("pre", preprocessor),
@@ -55,8 +59,13 @@ def definir_modelos(preprocessor: ColumnTransformer) -> dict:
         ]),
         "HistGradientBoosting": Pipeline([
             ("pre", preprocessor),
+            # Configuracion elegida por CV agrupada en train (seccion 11 del notebook):
+            # la meseta de mejores configuraciones comparte min_samples_leaf=20; entre ellas,
+            # mayor AUC de CV con gap de CV < 0.04. Se fija aqui para no depender del entorno.
             ("clf", HistGradientBoostingClassifier(max_iter=300, learning_rate=0.05,
-                                                   max_depth=6, class_weight="balanced",
+                                                   max_depth=None, max_leaf_nodes=31,
+                                                   min_samples_leaf=20, l2_regularization=1.0,
+                                                   class_weight="balanced",
                                                    random_state=SEED))
         ]),
     }
@@ -144,8 +153,19 @@ def run() -> dict:
           f"aporte: {abl['auc_con_genero'] - abl['auc_sin_genero']:+.4f}")
     pd.Series(abl).to_csv(os.path.join(OUTPUT_DIR, "ablacion_genero.csv"), header=["valor"])
 
+    # Politica de umbral (genero + numero de generos), calibrada fuera de muestra en train
+    print(f"[train] Calibrando politica de umbral de {mejor} (probabilidades fuera de muestra)...")
+    oof = cross_val_predict(definir_modelos(preprocessor)[mejor], X_train, y_train, groups=g_train,
+                            cv=cv, method="predict_proba", n_jobs=1)[:, 1]
+    pd.Series(oof, name="prob_oof").to_csv(os.path.join(OUTPUT_DIR, "prob_oof_train.csv"), index=False)
+    politica = ajustar_politica(oof, y_train, X_train[features_genre].values)
+    politica["features_genre"] = features_genre
+    joblib.dump(politica, os.path.join(OUTPUT_DIR, "politica_umbral.joblib"))
+    print(f"[train] Umbral global (recall {politica['r_obj']} fuera de muestra): {politica['u_global']:.3f} | "
+          f"ajuste por n de generos: " + ", ".join(f"{k}: {v:+.3f}" for k, v in politica["ajuste_n"].items()))
+
     return {"results_cv": results_cv, "tabla_cv": tabla_cv, "mejor": mejor,
-            "ablacion_genero": abl}
+            "ablacion_genero": abl, "politica": politica}
 
 
 if __name__ == "__main__":

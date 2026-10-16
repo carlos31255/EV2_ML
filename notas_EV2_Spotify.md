@@ -21,7 +21,7 @@
    - Se agrupa por canción única (song_key = artists + track_name) con GroupShuffleSplit (evita que la misma canción caiga en train y test inflando el AUC).
    - Semilla estricta (random_state=42).
    - El umbral **P80 se calcula SOLO con train** (52.0) y se aplica a test (el P80 cambia de 54 a ~52 tras deduplicar).
-4. **Modelos:** Regresión Logística, Random Forest, HistGradientBoosting (supervisados) y K-Means (no supervisado).
+4. **Modelos:** Regresión Logística, Random Forest, HistGradientBoosting (supervisados) y K-Means (no supervisado). El oficial es HGB ajustado + variables de texto + política de umbral por género y n° de géneros (`src/metricas.py`).
 
 ## 3. Estructura Oficial
 - data/raw/ y data/processed/ (ambos con train/ y test/).
@@ -29,15 +29,15 @@
   - 0_exploracion_inicial.ipynb (inspección inicial y EDA básico en raw).
   - 1_EDA.ipynb (visualizaciones profundas y análisis de sesgos, como el efecto de popularity 0 y el peso del género).
   - 2_Modelacion.ipynb (entrenamiento, evaluación, análisis de sesgos y pruebas de mitigación).
-- src/: pipeline.py, train.py, test.py, metricas.py, graficos.py.
+- src/: pipeline.py, train.py, test.py, metricas.py (incluye la política de umbral), graficos.py.
 - output/: graficos/ y modelos/. Gráficos nuevos del K-Means ampliado: 17_kmeans_criterios_k, 18_kmeans_pca_clusters, 19_kmeans_generos.
 - docs/: 0_exploracion_inicial.md, 1_eda.md, 2_modelo.md, informe_tecnico.md, Explicacion_Variables_Spotify.pdf.
 - main.py y README.md.
 
 ## 4. Estado (Octubre 2026)
 - Lógica de MultiLabelBinarizer, deduplicación agregada y split seguro por song_key restaurados.
-- 2_Modelacion.ipynb ampliado (K-Means con k=7, secciones 10 a 14) y ejecutado completo de arriba a abajo: 34 de 34 celdas, en orden, sin errores. Textos de lectura alineados con las salidas.
-- El modelo oficial no cambia (no se modificó train.py): HistGradientBoosting, multi-hot binario, split por canción, target absoluto (P80 de train = 52), popularidad 0 como no hit, umbral 0.5.
+- **Modelo oficial actualizado (14-10-2026):** HistGradientBoosting con hiperparámetros elegidos por CV (profundidad libre, 31 hojas, `min_samples_leaf=20`, L2 = 1), 5 variables de texto sin identidad del artista y política de umbral por género + número de géneros calibrada con probabilidades fuera de muestra de train. Multi-hot binario, split por canción, target absoluto (P80 de train = 52), popularidad 0 como no hit.
+- `main.py` y los tres notebooks ejecutados desde cero en Linux, sin errores (2_Modelacion: 34 de 34 celdas, en orden). Textos de lectura alineados con las salidas.
 
 ## 5. Ajustes de Etapas Anteriores (Verificados y Cumplidos al 100%)
 1. **requirements.txt (Cumplido):** Incluye `scipy==1.17.1` y `joblib==1.5.3` fijados (junto a pandas, numpy, scikit-learn, matplotlib, seaborn, jupyter, ipykernel y python-pptx).
@@ -46,36 +46,38 @@
 4. **src/graficos.py (Cumplido):** Concentra 29 funciones de visualización (gráficos 00 al 16, tablas y `run()`); los tres notebooks importan de forma centralizada vía `from src import graficos as gr`.
 5. **docs/ (Cumplido):** Redactados los tres .md por notebook (`0_exploracion_inicial.md`, `1_eda.md`, `2_modelo.md`), el informe técnico (`informe_tecnico.md`) y el documento técnico en PDF (`Explicacion_Variables_Spotify.pdf`).
 
-## 6. Resultados Clave de 2_Modelacion (corrida final, semilla 42)
-- **Modelo oficial (test):** AUC 0.857, gap 0.026, recall 0.833, precisión 0.425, lift@10% 3.36. Cumple los 4 KPIs.
-- **Género:** sin género el AUC cae de 0.856 a 0.695; por permutación el género pesa 0.30 de AUC (la siguiente variable, 0.009). El recall por género es muy desigual (0.15 en géneros de hit rate bajo, 0.99 en muy alto); el 51% de los géneros no llega a 0.75.
+## 6. Resultados Clave de 2_Modelacion (corrida final, semilla 42, Linux)
+- **Modelo oficial (test):** AUC 0.866, gap 0.030, recall 0.791, precisión 0.423, lift@10% 3.43. Cumple los 4 KPIs. Con umbral 0.5 el mismo modelo da recall 0.824 y precisión 0.458. Random Forest no cumple el KPI de recall con 0.5 (0.686).
+- **Frente a la versión anterior** (HGB `max_depth=6`, sin texto, umbral 0.5: AUC 0.857, recall 0.833, precisión 0.425, lift 3.36): sube AUC y lift, la precisión se mantiene, el recall en géneros de nicho pasa de 0.148 a 0.354 y el sobre-marcado de canciones con 3+ géneros baja de 2.27 a 1.74 veces su hit rate.
+- **Género:** sin género el AUC de CV cae de 0.868 a 0.707; por permutación el género pesa 0.31 de AUC (la siguiente variable, 0.009). Con la política: recall macro por género 0.559 → 0.591, correlación hit rate-recall 0.95 → 0.83, pero el 51% de los géneros sigue bajo 0.75.
+- **Multigénero:** marcadas / hit rate (1 · 2 · 3+ géneros) pasa de 1.82 · 1.59 · 2.18 (umbral 0.5) a 2.02 · 1.43 · 1.74; recall parejo ≈ 0.79 en los tres grupos.
+- **Bootstrap (300 réplicas):** frente a 0.5, recall de nicho +0.21 [0.15; 0.26], precisión −0.03 [−0.04; −0.03].
+- **Campaña del 10% superior:** sigue sesgada (1.5% de los hits de nicho, 68 de 114 géneros). Ordenando por margen sobre el umbral del género: 14.4% y 91 géneros, lift 2.44.
 - **K-Means (audio):** k=2 por silhouette (0.240) separa solo "tranquilo" de "enérgico". Con k=7 (estable, ARI >= 0.957 entre mitades) los clusters son familias de estilo con hit rate entre ≈ 0.10 y ≈ 0.24; usar solo el cluster da AUC 0.576. Los géneros agrupados por audio (k=3) tienen acuerdo moderado entre K-Means y Ward (ARI 0.47); un grupo de 12 géneros acústicos/instrumentales tiene hit rate medio 0.12 frente a 0.245 de los otros.
-- **Umbral calibrado en train (sección 10):** máx. F1 en 0.56 (recall 0.691, pierde el KPI); recall 0.78 en train -> umbral ≈ 0.522 (precisión 0.456, recall 0.793, mantiene el KPI).
-- **Política suavizada por género (λ=0.1, elegida sin usar test):** recall global 0.795, precisión 0.373, recall en géneros de hit rate < 10% de 0.148 a 0.487, recall macro 0.580 a 0.641. El bootstrap muestra que las diferencias superan el ruido. Umbral por género puro: recall 0.773 (IC 0.759 a 0.785), precisión 0.357.
-- **Hiperparámetros (sección 11):** la configuración oficial quedó 9ª de 11 (AUC CV 0.8557). La mejor llegó a 0.8647 en CV y 0.8646 en test (gap 0.039, lift 3.42). La configuración ganadora varía entre entornos; lo estable es la meseta (las cuatro mejores entre 0.8630 y 0.8647, todas con min_samples_leaf = 20).
-- **Número de géneros (sección 12):** solo con canciones de un género el AUC es 0.863 (oficial en las mismas canciones, 0.865). El modelo marca más canciones multigénero por composición de géneros.
-- **Variables de texto y ensamble (sección 13):** variables de texto +0.003 de AUC en CV (test 0.8594); el ensamble con Regresión Logística empeora (test 0.851).
-- **Negocio (sección 14):** el 10% superior del ranking tiene ≈ 69% de hits y captura ≈ 34% de todos los hits; el umbral 0.5 promociona el 40% del catálogo y el 57% de lo promocionado no es hit.
+- **Hiperparámetros (sección 11):** grilla de 32 configuraciones en la meseta `min_samples_leaf=20`, regla "mayor AUC CV con gap CV < 0.04". La oficial empata en la cima (0.8661 vs 0.8663, diferencia menor que la desviación entre folds); la anterior queda 24ª de 33.
+- **Número de géneros (sección 12):** solo con canciones de un género el AUC es 0.875 (oficial en las mismas canciones, 0.875).
+- **Variables de texto (sección 13):** +0.003 de AUC en CV; el ensamble con Regresión Logística empeora (test 0.858).
+- **Negocio (sección 14):** el 10% superior del ranking tiene ≈ 70% de hits y captura ≈ 34% de todos los hits; la política oficial marca el 38% del catálogo y el 58% de lo marcado no es hit.
 
 ## 7. Decisión Final y Alternativas Documentadas
-- Se mantiene el modelo oficial. Quedan documentadas como alternativas, sin adoptar: política suavizada por género, hiperparámetros ajustados, variables de texto y umbral por recall 0.78.
-- Ninguna alternativa corrige el sesgo de género sin un costo en algún KPI o sin cambiar el problema. El sesgo queda medido y declarado, no evitado.
-- Uso recomendado: priorizar canciones en campañas (tramo superior del ranking). El modelo captura sobre todo qué géneros son populares, no qué hace "buena" a una canción.
-- Multi-hot normalizado: evaluado en una corrida previa y descartado (no cambiaba lo suficiente); no tiene celda en el notebook.
+- Se adopta el modelo oficial descrito en la sección 4.
+- Alternativas documentadas, sin adoptar: equidad fuerte (umbral por género sin encogimiento, recall 0.82: nicho 0.71 pero precisión 0.285), ranking por margen para la campaña (lift 2.44), modelo con una fila por (canción, género) (AUC 0.849, empeora el sobre-marcado), reponderar por género (AUC 0.686), ensamble con Regresión Logística.
+- El sesgo de género queda reducido y medido, no eliminado. El modelo captura sobre todo qué géneros son populares, no qué hace "buena" a una canción.
+- Multi-hot normalizado: evaluado en una corrida previa con el modelo anterior y descartado; no tiene celda en el notebook.
 
 ## 8. Rúbrica EV2 y Defensa
 - Evaluación grupal con defensa individual: 10 minutos de presentación y preguntas cruzadas (cada integrante debe dominar todo el proyecto).
 - Entrega: informe técnico .md reproducible tipo README (problema, objetivos, KPIs, fuentes de datos, EDA, CRISP-DM), notebook .ipynb ejecutable, datos y archivos complementarios, carpeta con estructura profesional.
 - Requisitos: mínimo 2 modelos supervisados y 1 técnica no supervisada; evaluar el impacto ético.
 - Ponderación: IE5 metodología 20%, IE6 modelos supervisados (algoritmo y configuración justificados) 30%, IE7 no supervisado (patrones relevantes y aplicación al negocio) 30%, IE8 interpretación de métricas y recomendaciones de negocio 20%.
-- Preguntas probables: por qué no se quitó el género, por qué umbral 0.5, por qué HGB y esa configuración, qué significa silhouette 0.24 y por qué se segmenta con k=7, qué mide el lift, por qué split por canción, qué mide el gap.
+- Preguntas probables: por qué no se quitó el género, por qué un umbral distinto por género (y si eso es justo), cómo se calibró la política sin mirar test, por qué HGB y esa configuración, qué significa silhouette 0.24 y por qué se segmenta con k=7, qué mide el lift, por qué split por canción, qué mide el gap.
 
 ## 9. Pendientes Antes de Entregar
-1. informe_tecnico.md: confirmar secciones explícitas de Objetivos del proyecto, Impacto ético y mapeo de las fases CRISP-DM (la pauta las exige).
-2. Confirmar que la fuente de datos citada en el informe (HuggingFace) coincide con la usada.
-3. docs: el multi-hot normalizado figura como probado en 1_eda.md y 2_modelo.md; indicar "evaluado en una corrida previa" o agregar la celda.
-4. README.md: objetivo, estructura, ejecución y limitaciones; agregar los gráficos 17 a 19 a los comandos de limpieza.
-5. Reproducibilidad final: borrar data/processed, data/raw/train|test y output/modelos; ejecutar python main.py desde cero y "Restart & Run All" en los tres notebooks (la sección 13 de 2_Modelacion lee data/raw/train|test; la búsqueda de hiperparámetros tarda varios minutos).
+1. ~~informe_tecnico.md: secciones de Objetivos, Impacto ético y mapeo CRISP-DM.~~ Hecho (secciones 2, 5 y 10 del informe).
+2. ~~Confirmar la fuente de datos.~~ Hecho: las 114.000 filas de `data/raw/Spotify_Tracks_Dataset.csv` son idénticas a las del CSV entregado por la asignatura (solo cambia el nombre de la columna índice). No se pudo descargar el archivo de HuggingFace para compararlo directamente.
+3. ~~Multi-hot normalizado en docs.~~ Hecho: marcado como "evaluado en una corrida previa" en 1_eda.md y 2_modelo.md.
+4. ~~README.md.~~ Hecho: objetivo agregado, comentario de environment.yml corregido, nota sobre gráficos 00 y 13 a 19 (incluye 17 a 19) en la limpieza.
+5. Reproducibilidad: verificada en Linux (main.py y los tres notebooks sin errores, 34 de 34 celdas en 2_Modelacion). Falta repetir `python main.py` y "Restart & Run All" en Windows antes de entregar; el recall y la precisión oficiales pueden moverse en el tercer decimal (dependen de la CV).
 6. Ensayar la defensa con las preguntas de la sección 8.
 
 ## 10. Registro de Cambios (Octubre 2026)
@@ -95,3 +97,9 @@
 - Se ejecutó `notebooks/2_Modelacion.ipynb` completo (Restart & Run All): 34 de 34 celdas en orden y sin errores.
 - Se reorganizaron las notas: estado actual, resultados clave, decisión final, rúbrica de la EV2 y pendientes antes de entregar.
 - Se verificó y registró el cumplimiento al 100% de los 5 ajustes de etapas anteriores (requirements.txt, src/test.py, main.py, src/graficos.py y docs/).
+- Se completó `docs/informe_tecnico.md`: objetivos del proyecto, fuente de datos verificada, tabla CRISP-DM, K-Means k=7 y su uso de negocio, lectura de cada KPI, umbral corregido (antes decía que 0.5 maximiza el recall), recomendaciones de negocio, alternativas evaluadas, impacto ético y reproducción.
+- Corrida desde cero en Linux con el modelo anterior: las métricas de test eran idénticas a las de Windows; los resultados que dependen de CV variaban en el tercer decimal por diferencias numéricas entre sistemas operativos en el entrenamiento (no por los datos: con los mismos archivos de Windows el AUC de CV en Linux da igual 0.8568).
+- **Modelo mejorado (14-10-2026):** `src/pipeline.py` agrega 5 variables de texto; `src/train.py` usa HGB con profundidad libre, 31 hojas, `min_samples_leaf=20`, L2 = 1, Regresión Logística con `lbfgs` (mismo AUC, ≈ 17 veces más rápida) y calibra la política de umbral (funciones en `src/metricas.py`, guarda `politica_umbral.joblib` y `prob_oof_train.csv`); `src/test.py` evalúa el modelo oficial con la política y guarda `equidad_test.csv`; `src/graficos.py` dibuja las curvas una vez por modelo.
+- `notebooks/2_Modelacion.ipynb`: secciones 1, 2, 4, 4b, 6e, 10 (nueva política, bootstrap y campaña del 10%), 11 (grilla de 32 configuraciones, cacheada en `busqueda_hiperparametros.csv`), 12, 13 y 14 actualizadas; lecturas reescritas con las salidas nuevas.
+- Docs actualizados: `informe_tecnico.md`, `2_modelo.md`, `1_eda.md`, `README.md` y `Explicacion_Variables_Spotify.pdf` (133 variables, nuevos KPIs).
+- **Estructura alineada con la pizarra (15-10-2026):** la política de umbral se movió de `src/umbral.py` a `src/metricas.py`, así `src/` queda con pipeline, graficos, metricas, train y test. Nuevo gráfico `20_politica_umbral.png` (función `grafico_politica_umbral` en `src/graficos.py`, sección 10b del notebook 2). Los gráficos de evidencia (00 a 20) quedaron insertos en `0_exploracion_inicial.md`, `1_eda.md`, `2_modelo.md` e `informe_tecnico.md`.

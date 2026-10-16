@@ -34,11 +34,13 @@ El problema de negocio es predecir si una canción será un **hit** (popularidad
 
 **Conclusión clave:** una fila **no** es una canción. La mayor parte de las repeticiones no son duplicados exactos: son la misma canción listada en distintos géneros.
 
+![Número de géneros por canción](../output/graficos/00_generos_por_cancion.png)
+
 ## 4. Decisiones de preprocesamiento y alternativas
 
 | Tema | Alternativas | Decisión | Por qué |
 |---|---|---|---|
-| Nulos de texto | Imputar · eliminar | **Eliminar** la fila | Son 1 fila y solo en columnas de texto que el modelo no usa |
+| Nulos de texto | Imputar · eliminar | **Eliminar** la fila | Es 1 fila y los nulos están solo en columnas de texto; el modelo no usa el texto como tal (solo el número de artistas y marcas del título), así que imputar no aporta |
 | `Unnamed: 0` | Conservar · descartar | **Descartar** | Es un índice, no información |
 | Duplicados por `track_id` | (a) `drop_duplicates(keep="first")` · (b) agrupar por `track_id` | **(b)** una fila por canción, con **popularidad máxima** entre copias y **todos los géneros** | (a) se queda con un género arbitrario (depende del orden del archivo) y pierde el 18,2% de la información de género |
 | Popularidad entre copias | Primera · promedio · máximo | **Máximo** | Diferencias pequeñas (720 casos); evita que el orden del archivo decida la etiqueta |

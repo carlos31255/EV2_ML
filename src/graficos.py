@@ -24,6 +24,8 @@ Analisis de modelos (2_Modelacion.ipynb):
   13_recall_por_genero.png
   14_importancia_permutacion.png
   15_kmeans_silhouette.png
+  (16 a 19 los dibuja el notebook: recall vs hit rate del genero y K-Means ampliado)
+  20_politica_umbral.png
 
 Uso:
   python -m src.graficos
@@ -404,6 +406,37 @@ def grafico_kmeans_silhouette(sil: dict) -> int:
 
 # ── Funcion principal ─────────────────────────────────────────────────────────
 
+def grafico_politica_umbral(recall_tramos: pd.DataFrame, marcadas_n: pd.DataFrame,
+                            meta: float = 0.75) -> None:
+    """
+    Evidencia de la politica de umbral (seccion 10 de 2_Modelacion), umbral 0.5 vs oficial.
+    recall_tramos: indice = tramo de hit rate del genero, columnas = politicas (recall en test).
+    marcadas_n:    indice = 1, 2, 3+ generos, columnas = politicas (marcadas / hit rate real).
+    """
+    colores = {"umbral 0.5": "#9E9E9E", "oficial": SPOTIFY_GREEN}
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.4))
+    paneles = [(axes[0], recall_tramos, "Recall por tramo de hit rate del género", "Recall (test)", "{:.2f}"),
+               (axes[1], marcadas_n, "Marcadas / hit rate real, por n° de géneros", "Veces su tasa real de hits", "{:.2f}")]
+    for ax, df_p, titulo, ylab, fmt in paneles:
+        x = np.arange(len(df_p.index)); ancho = 0.38
+        for k, col in enumerate(df_p.columns):
+            barras = ax.bar(x + (k - 0.5) * ancho, df_p[col].values, width=ancho - 0.03,
+                            color=colores.get(col, PALETTE[k]), label=col)
+            ax.bar_label(barras, labels=[fmt.format(v) for v in df_p[col].values],
+                         padding=2, fontsize=8, color="#212529")
+        ax.set_xticks(x); ax.set_xticklabels([str(i) for i in df_p.index])
+        ax.set_title(titulo, fontsize=11, pad=10); ax.set_ylabel(ylab)
+        ax.grid(axis="y"); ax.set_axisbelow(True)
+        ax.spines[["top", "right"]].set_visible(False)
+    axes[0].axhline(meta, color=RED, ls="--", lw=1, label=f"KPI recall = {meta}")
+    axes[0].set_ylim(0, 1.12); axes[0].set_xlabel("Hit rate del género")
+    axes[1].set_ylim(0, max(2.6, float(marcadas_n.values.max()) * 1.15)); axes[1].set_xlabel("Géneros de la canción")
+    axes[0].legend(fontsize=8, loc="upper left"); axes[1].legend(fontsize=8, loc="upper left")
+    fig.suptitle("Política de umbral: umbral 0.5 frente a la política oficial (test)", fontsize=12, y=1.02)
+    fig.tight_layout()
+    _save(fig, "20_politica_umbral.png")
+
+
 def _cargar_eda():
     """
     Mismo df que usa 1_EDA.ipynb: data/raw/train/raw_train.csv con las
@@ -433,10 +466,13 @@ def run(results: dict = None, y_test=None, rf_pipe=None) -> None:
     grafico_popularidad_cero(df)
 
     if results and y_test is not None:
-        grafico_roc(results, y_test)
-        grafico_pr(results, y_test)
+        # El modelo oficial tiene las mismas probabilidades que su modelo base: las curvas
+        # (ROC, PR, ganancia) se dibujan una vez por modelo; la matriz de confusion lo incluye.
+        curvas = {k: v for k, v in results.items() if not k.endswith("(oficial)")}
+        grafico_roc(curvas, y_test)
+        grafico_pr(curvas, y_test)
         grafico_matrices_confusion(results, y_test)
-        grafico_ganancia_acumulada(results, y_test)
+        grafico_ganancia_acumulada(curvas, y_test)
         if rf_pipe is not None:
             grafico_importancia_rf(rf_pipe)
 

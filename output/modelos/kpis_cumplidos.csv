@@ -1,13 +1,17 @@
 Modelo,KPI,Meta,Valor,Cumple
-Regresion Logistica,AUC-ROC,>= 0.8,0.8357,Si
-Regresion Logistica,Recall,>= 0.75,0.7977,Si
-Regresion Logistica,Lift @10%,>= 2.0,3.0099,Si
-Regresion Logistica,Gap AUC,< 0.05,0.0047,Si
-Random Forest,AUC-ROC,>= 0.8,0.8255,Si
-Random Forest,Recall,>= 0.75,0.7574,Si
-Random Forest,Lift @10%,>= 2.0,3.1936,Si
-Random Forest,Gap AUC,< 0.05,0.0153,Si
-HistGradientBoosting,AUC-ROC,>= 0.8,0.8569,Si
-HistGradientBoosting,Recall,>= 0.75,0.8331,Si
-HistGradientBoosting,Lift @10%,>= 2.0,3.3557,Si
-HistGradientBoosting,Gap AUC,< 0.05,0.0255,Si
+Regresion Logistica,AUC-ROC,>= 0.8,0.8392,Si
+Regresion Logistica,Recall,>= 0.75,0.8031,Si
+Regresion Logistica,Lift @10%,>= 2.0,3.0369,Si
+Regresion Logistica,Gap AUC,< 0.05,0.0046,Si
+Random Forest,AUC-ROC,>= 0.8,0.8273,Si
+Random Forest,Recall,>= 0.75,0.6864,No
+Random Forest,Lift @10%,>= 2.0,3.2071,Si
+Random Forest,Gap AUC,< 0.05,0.0183,Si
+HistGradientBoosting,AUC-ROC,>= 0.8,0.8663,Si
+HistGradientBoosting,Recall,>= 0.75,0.8244,Si
+HistGradientBoosting,Lift @10%,>= 2.0,3.4313,Si
+HistGradientBoosting,Gap AUC,< 0.05,0.0299,Si
+HistGradientBoosting + umbral por genero (oficial),AUC-ROC,>= 0.8,0.8663,Si
+HistGradientBoosting + umbral por genero (oficial),Recall,>= 0.75,0.7909,Si
+HistGradientBoosting + umbral por genero (oficial),Lift @10%,>= 2.0,3.4313,Si
+HistGradientBoosting + umbral por genero (oficial),Gap AUC,< 0.05,0.0299,Si

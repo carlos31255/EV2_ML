@@ -17,6 +17,9 @@ HIT_PERCENTILE = 0.80
 FEATURES_SCALE = ["danceability", "energy", "loudness", "valence", "tempo", "acousticness", "speechiness_log", "instrumentalness_log", "liveness_log", "duration_ms_log"]
 FEATURES_CAT = ["key", "time_signature"]
 FEATURES_BIN = ["explicit", "mode"]
+# Variables baratas del texto (seccion 13 del notebook): sin identidad del artista
+FEATURES_TEXT_NUM = ["n_artistas", "t_palabras"]
+FEATURES_TEXT_BIN = ["t_remix", "t_live", "t_feat"]
 TARGET = "hit"
 GENRE_PREFIX = "genre_"
 
@@ -85,12 +88,27 @@ def split_raw_data(df):
     print(f"[pipeline] Raw Train: {len(train_raw)}, Raw Test: {len(test_raw)}")
     return train_raw, test_raw
 
+def variables_texto(df):
+    """
+    Variables del texto que no identifican al artista: numero de artistas (colaboraciones)
+    y marcas en el titulo (remix, live, feat., cantidad de palabras). No usan el target.
+    """
+    t = df["track_name"].fillna("").str.lower()
+    return pd.DataFrame({
+        "n_artistas": df["artists"].fillna("").str.count(";") + 1,
+        "t_remix":    t.str.contains(r"remix|\bmix\b", regex=True).astype(int),
+        "t_live":     t.str.contains(r"\blive\b|en vivo", regex=True).astype(int),
+        "t_feat":     t.str.contains(r"feat\.?|\bft\.|\bwith\b", regex=True).astype(int),
+        "t_palabras": t.str.split().str.len().fillna(0).astype(int),
+    }, index=df.index)
+
 def aplicar_transformaciones(df, threshold=None):
-    """ Aplica log1p y define target (hit) """
+    """ Aplica log1p, agrega variables de texto y define target (hit) """
     df = df.copy()
     log_vars = ["speechiness", "instrumentalness", "liveness", "duration_ms"]
     for v in log_vars:
         df[f"{v}_log"] = np.log1p(df[v])
+    df = pd.concat([df, variables_texto(df)], axis=1)
     
     if threshold is None:
         threshold = df["popularity"].quantile(HIT_PERCENTILE)
@@ -104,7 +122,7 @@ def guardar_processed(train, test, genre_cols):
     os.makedirs(PROC_TRAIN_DIR, exist_ok=True)
     os.makedirs(PROC_TEST_DIR, exist_ok=True)
 
-    ALL_FEATURES = FEATURES_SCALE + FEATURES_CAT + FEATURES_BIN + genre_cols
+    ALL_FEATURES = FEATURES_SCALE + FEATURES_CAT + FEATURES_BIN + FEATURES_TEXT_NUM + FEATURES_TEXT_BIN + genre_cols
 
     # Train
     train[ALL_FEATURES].to_csv(os.path.join(PROC_TRAIN_DIR, "X_train.csv"), index=False)

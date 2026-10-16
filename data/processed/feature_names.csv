@@ -13,6 +13,11 @@ key
 time_signature
 explicit
 mode
+n_artistas
+t_palabras
+t_remix
+t_live
+t_feat
 genre_acoustic
 genre_afrobeat
 genre_alt-rock
