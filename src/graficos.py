@@ -11,7 +11,8 @@ EDA (sobre data/raw/train con transformaciones aplicadas):
   02_distribuciones_numericas.png
   03_hit_rate_por_genero.png
   04_hit_rate_n_generos.png
-  05_correlaciones.png
+  05_correlaciones.png (candidatas: variables de audio/categoricas + n_generos)
+  05b_correlaciones_finales.png (las que usa el modelo: audio/categoricas + texto, sin n_generos)
   06_features_por_clase.png
   07_popularidad_cero.png
 Modelos:
@@ -76,6 +77,12 @@ NUM_COLS  = ["danceability", "energy", "loudness", "valence", "tempo",
 CORR_COLS = NUM_COLS + ["explicit", "mode", "key", "time_signature"]
 VARS_BOX  = ["danceability", "energy", "loudness", "valence",
              "acousticness", "instrumentalness"]
+
+# Dos recortes de la matriz de correlacion (grafico_correlaciones):
+# candidatas = lo de CORR_COLS + n_generos (variable descartada, para ver por que)
+# finales    = lo de CORR_COLS + las 5 variables de texto (las que SI entran al modelo), sin n_generos
+CORR_COLS_CANDIDATAS = CORR_COLS + ["n_generos"]
+CORR_COLS_FINALES    = CORR_COLS + ["n_artistas", "t_palabras", "t_remix", "t_live", "t_feat"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -171,16 +178,17 @@ def grafico_hit_rate_n_generos(df: pd.DataFrame) -> pd.DataFrame:
     return t.round(3)
 
 
-def grafico_correlaciones(df: pd.DataFrame, cols: list = None) -> pd.DataFrame:
+def grafico_correlaciones(df: pd.DataFrame, cols: list = None, nombre: str = "05_correlaciones.png",
+                          titulo: str = "Correlaciones (Pearson)") -> pd.DataFrame:
     cols = cols or CORR_COLS
     corr = df[cols + ["popularity", "hit"]].astype(float).corr()
     fig, ax = plt.subplots(figsize=(11, 9))
     sns.heatmap(corr, annot=True, fmt=".2f", cmap="RdYlGn", center=0,
                 linewidths=0.5, linecolor="#0f0f1a", ax=ax,
                 annot_kws={"size": 7}, cbar_kws={"shrink": .8})
-    ax.set_title("Correlaciones (Pearson)")
+    ax.set_title(titulo)
     fig.tight_layout()
-    _save(fig, "05_correlaciones.png")
+    _save(fig, nombre)
     return corr
 
 
@@ -461,7 +469,10 @@ def run(results: dict = None, y_test=None, rf_pipe=None) -> None:
     grafico_distribuciones_numericas(df)
     grafico_hit_rate_genero(df)
     grafico_hit_rate_n_generos(df)
-    grafico_correlaciones(df)
+    grafico_correlaciones(df, CORR_COLS_CANDIDATAS, nombre="05_correlaciones.png",
+                         titulo="Correlaciones (Pearson) - variables candidatas, incluye n_generos")
+    grafico_correlaciones(df, CORR_COLS_FINALES, nombre="05b_correlaciones_finales.png",
+                         titulo="Correlaciones (Pearson) - variables finales del modelo")
     grafico_features_por_clase(df)
     grafico_popularidad_cero(df)
 
