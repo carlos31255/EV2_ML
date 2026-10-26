@@ -12,6 +12,6 @@ HistGradientBoosting,Recall,>= 0.75,0.8244,Si
 HistGradientBoosting,Lift @10%,>= 2.0,3.4313,Si
 HistGradientBoosting,Gap AUC,< 0.05,0.0299,Si
 HistGradientBoosting + umbral por genero (oficial),AUC-ROC,>= 0.8,0.8663,Si
-HistGradientBoosting + umbral por genero (oficial),Recall,>= 0.75,0.7909,Si
+HistGradientBoosting + umbral por genero (oficial),Recall,>= 0.75,0.7952,Si
 HistGradientBoosting + umbral por genero (oficial),Lift @10%,>= 2.0,3.4313,Si
 HistGradientBoosting + umbral por genero (oficial),Gap AUC,< 0.05,0.0299,Si

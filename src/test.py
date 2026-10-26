@@ -21,9 +21,10 @@ import pandas as pd
 from src.metricas import (evaluar_modelo, tabla_comparativa, verificar_kpis,
                           umbral_politica, resumen_equidad)
 
+from src.train import OUTPUT_DIR, RESULTADOS_DIR   # rutas definidas en un solo lugar
+
 TEST_DIR   = os.path.join("data", "processed", "test")
 TRAIN_DIR  = os.path.join("data", "processed", "train")
-OUTPUT_DIR = os.path.join("output", "modelos")
 
 ARCHIVOS_MODELOS = {
     "Regresion Logistica":  "regresion_logistica.joblib",
@@ -41,8 +42,8 @@ def _hay_modelos() -> bool:
 
 
 def _mejor_por_cv(results: dict):
-    """Nombre del modelo con mayor AUC de CV (output/modelos/resultados_cv.csv), o None."""
-    ruta = os.path.join(OUTPUT_DIR, "resultados_cv.csv")
+    """Nombre del modelo con mayor AUC de CV (output/modelos/resultados/resultados_cv.csv), o None."""
+    ruta = os.path.join(RESULTADOS_DIR, "resultados_cv.csv")
     if not os.path.exists(ruta):
         return None
     cv = pd.read_csv(ruta, index_col=0)
@@ -69,6 +70,7 @@ def run() -> dict:
     X_test  = pd.read_csv(os.path.join(TEST_DIR,  "X_test.csv"))
     y_test  = pd.read_csv(os.path.join(TEST_DIR,  "y_test.csv")).squeeze()
 
+    os.makedirs(RESULTADOS_DIR, exist_ok=True)
     results = {}
     for nombre, archivo in ARCHIVOS_MODELOS.items():
         ruta = os.path.join(OUTPUT_DIR, archivo)
@@ -99,7 +101,7 @@ def run() -> dict:
         equidad = pd.DataFrame({
             f"{mejor} (umbral 0.5)": resumen_equidad(y_test, results[mejor]["y_pred"], G_test),
             nombre_of:               resumen_equidad(y_test, metricas["y_pred"], G_test)})
-        equidad.round(4).to_csv(os.path.join(OUTPUT_DIR, "equidad_test.csv"))
+        equidad.round(4).to_csv(os.path.join(RESULTADOS_DIR, "equidad_test.csv"))
         print("\nEquidad (test):")
         print(equidad.round(3).to_string())
     else:
@@ -108,11 +110,11 @@ def run() -> dict:
     # Tabla comparativa
     tabla = tabla_comparativa(results)
     print("\n" + tabla.to_string())
-    tabla.to_csv(os.path.join(OUTPUT_DIR, "resultados_test.csv"))
+    tabla.to_csv(os.path.join(RESULTADOS_DIR, "resultados_test.csv"))
 
     # KPIs de negocio (los 4)
     kpis = verificar_kpis(results)
-    kpis.to_csv(os.path.join(OUTPUT_DIR, "kpis_cumplidos.csv"), index=False)
+    kpis.to_csv(os.path.join(RESULTADOS_DIR, "kpis_cumplidos.csv"), index=False)
     print("\nKPIs de negocio:")
     print(kpis.pivot(index="Modelo", columns="KPI", values="Cumple").to_string())
 
@@ -132,7 +134,7 @@ def run() -> dict:
         for k, v in detalle.items():
             print(f"   {k}: {v:.4f}")
         pd.Series(detalle, name=oficial).to_csv(
-            os.path.join(OUTPUT_DIR, "mejor_modelo_test.csv")
+            os.path.join(RESULTADOS_DIR, "mejor_modelo_test.csv")
         )
 
     print("\n[test] Evaluacion completada.")

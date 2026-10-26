@@ -125,8 +125,8 @@ def verificar_kpis(results: dict) -> pd.DataFrame:
 # ============================================================================
 # POLITICA DE UMBRAL DEL MODELO OFICIAL
 # ============================================================================
-# Corrige el sesgo de genero y el sobre-marcado de canciones multigenero SIN cambiar
-# el ranking del modelo (AUC y lift no cambian).
+# Reparte el recall entre generos y lo iguala entre canciones de 1, 2 y 3+ generos SIN cambiar
+# el ranking del modelo (AUC y lift no cambian). Reduce el sesgo de genero, no lo elimina.
 #
 # 1. Umbral por genero: para cada genero, el umbral que logra recall R_OBJ (0.78) sobre
 #    sus hits, calculado con probabilidades FUERA DE MUESTRA de train (CV agrupada).
@@ -134,11 +134,10 @@ def verificar_kpis(results: dict) -> pd.DataFrame:
 #        u_g = a * u_genero + (1 - a) * u_global,   a = hits_g / (hits_g + K_ENCOGIMIENTO)
 #    Una cancion con varios generos usa el promedio de los umbrales de sus generos.
 # 2. Correccion por numero de generos (1, 2, 3+): desplazamiento aditivo para que el
-#    recall fuera de muestra de cada grupo sea R_OBJ. Evita que las canciones con mas
-#    generos se marquen de mas.
+#    recall fuera de muestra de cada grupo sea R_OBJ.
 #
-# R_OBJ = 0.78 (margen sobre el KPI de 0.75) y K_ENCOGIMIENTO = 30 se fijaron antes de
-# mirar test. Test no se usa para calibrar nada.
+# R_OBJ = 0.78 (margen sobre el KPI de 0.75) y K_ENCOGIMIENTO = 30 son decisiones de diseno,
+# sin analisis de sensibilidad. Los umbrales se calibran solo con train (test no se usa aqui).
 #
 # Uso:
 #   from src.metricas import ajustar_politica, aplicar_politica, umbral_politica

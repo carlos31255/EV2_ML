@@ -40,7 +40,7 @@ def pre_procesar_basico(df):
       - grupo      : alias de song_key (lo usa el notebook 1_EDA)
     """
     print("[pipeline] Eliminando nulos criticos...")
-    # 3 nulos de texto, simplemente los descartamos
+    # 1 fila con nulos en artists, album_name y track_name: se descarta
     df = df.dropna(subset=["artists", "album_name", "track_name", "track_id"]).copy()
 
     # Popularidad 0 no se borra.

@@ -2,7 +2,7 @@
 src/train.py
 ------------
 Entrena los modelos supervisados con validacion cruzada agrupada por cancion
-y los guarda en output/modelos/. NO evalua en test (eso es src/test.py).
+y los guarda en output/modelos/ (tablas en output/modelos/resultados/). NO evalua en test (eso es src/test.py).
 El mejor modelo se elige por AUC de validacion cruzada, no por test.
 Ademas mide el aporte del genero (ablacion: mejor modelo con y sin genero, por CV) y
 calibra la politica de umbral del modelo final (src/metricas.py) con probabilidades
@@ -27,7 +27,8 @@ from src.pipeline import FEATURES_SCALE, FEATURES_CAT, FEATURES_BIN, FEATURES_TE
 from src.metricas import ajustar_politica
 
 TRAIN_DIR  = os.path.join("data", "processed", "train")
-OUTPUT_DIR = os.path.join("output", "modelos")
+OUTPUT_DIR = os.path.join("output", "modelos")          # modelos y politica (.joblib)
+RESULTADOS_DIR = os.path.join(OUTPUT_DIR, "resultados")  # tablas de resultados (.csv)
 SEED       = 42
 CV_FOLDS   = 5
 
@@ -107,6 +108,7 @@ def run() -> dict:
     results_cv = {}
     resumen    = {}
     os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(RESULTADOS_DIR, exist_ok=True)
 
     for nombre, pipe in modelos.items():
         print(f"\n[train] Entrenando: {nombre} ...")
@@ -139,7 +141,7 @@ def run() -> dict:
     tabla_cv = pd.DataFrame(resumen).T
     print("\n" + "=" * 60)
     print(tabla_cv.round(4).to_string())
-    tabla_cv.to_csv(os.path.join(OUTPUT_DIR, "resultados_cv.csv"))
+    tabla_cv.to_csv(os.path.join(RESULTADOS_DIR, "resultados_cv.csv"))
 
     mejor = tabla_cv["auc_cv"].idxmax()
     joblib.dump(modelos[mejor], os.path.join(OUTPUT_DIR, "best_model.joblib"))
@@ -151,13 +153,13 @@ def run() -> dict:
     print(f"[train] AUC CV con genero: {abl['auc_con_genero']:.4f} | "
           f"sin genero: {abl['auc_sin_genero']:.4f} | "
           f"aporte: {abl['auc_con_genero'] - abl['auc_sin_genero']:+.4f}")
-    pd.Series(abl).to_csv(os.path.join(OUTPUT_DIR, "ablacion_genero.csv"), header=["valor"])
+    pd.Series(abl).to_csv(os.path.join(RESULTADOS_DIR, "ablacion_genero.csv"), header=["valor"])
 
     # Politica de umbral (genero + numero de generos), calibrada fuera de muestra en train
     print(f"[train] Calibrando politica de umbral de {mejor} (probabilidades fuera de muestra)...")
     oof = cross_val_predict(definir_modelos(preprocessor)[mejor], X_train, y_train, groups=g_train,
                             cv=cv, method="predict_proba", n_jobs=1)[:, 1]
-    pd.Series(oof, name="prob_oof").to_csv(os.path.join(OUTPUT_DIR, "prob_oof_train.csv"), index=False)
+    pd.Series(oof, name="prob_oof").to_csv(os.path.join(RESULTADOS_DIR, "prob_oof_train.csv"), index=False)
     politica = ajustar_politica(oof, y_train, X_train[features_genre].values)
     politica["features_genre"] = features_genre
     joblib.dump(politica, os.path.join(OUTPUT_DIR, "politica_umbral.joblib"))

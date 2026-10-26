@@ -42,6 +42,7 @@ def main():
     print(f"  Pipeline completo finalizado en {elapsed:.1f}s")
     print(f"  Mejor modelo: {mejor_nombre}")
     print(f"  Modelos guardados en:   output/modelos/")
+    print(f"  Tablas de resultados:   output/modelos/resultados/")
     print(f"  Datos procesados en:    data/processed/train/ y test/")
     print(f"  Graficos en:            output/graficos/")
     print("=" * 60 + "\n")
