@@ -17,9 +17,9 @@ Consume `data/processed/train|test` (generado al cierre del EDA; **no divide ni 
 
 - **Variables (133):** 10 de audio (4 con `log1p`), `key` y `time_signature`, `explicit` y `mode`, 5 variables de texto sin identidad del artista (`n_artistas`, `t_palabras`, `t_remix`, `t_live`, `t_feat`) y 114 columnas `genre_*`.
 - **Preprocesamiento dentro del `Pipeline`:** `StandardScaler` (numéricas, incluidas `n_artistas` y `t_palabras`), `OneHotEncoder` (`key`, `time_signature`), `passthrough` (`explicit`, `mode`, marcas de texto y las 114 columnas `genre_*`).
-- **Desbalance:** `class_weight="balanced"` en los tres modelos supervisados. La comparación con y sin él (sección 2b del notebook, probabilidades fuera de muestra de train) muestra que no mejora el ranking (AUC de HGB 0,8668 con él y 0,8667 sin él; PR-AUC algo menor con él) y que, a igual recall (0,78), la precisión es casi la misma (0,495 y 0,493). Su efecto es desplazar las probabilidades: con umbral 0,5 el recall de HGB pasa de 0,389 a 0,818. Se mantiene porque permite cumplir el KPI de recall con el umbral por defecto; la política de umbral no depende de esta elección.
+- **Desbalance:** `class_weight="balanced"` en los tres modelos supervisados. La comparación con y sin él (sección 2b del notebook, probabilidades fuera de muestra de train) muestra que no mejora el ranking (AUC de HGB 0,8678 con él y 0,8671 sin él; PR-AUC algo menor con él) y que, a igual recall (0,78), la precisión es casi la misma (0,498 y 0,493). Su efecto es desplazar las probabilidades: con umbral 0,5 el recall de HGB pasa de 0,391 a 0,819. Se mantiene porque permite cumplir el KPI de recall con el umbral por defecto; la política de umbral no depende de esta elección.
 - **Validación cruzada:** 5 folds estratificados y **agrupados por canción** (`song_key`), semilla 42.
-- **Detención temprana (no configurada explícitamente):** en scikit-learn, `HistGradientBoostingClassifier` usa `early_stopping="auto"`, que se activa con más de 10.000 filas. Con ~71.700 canciones, el HGB aparta internamente un 10% de los datos que recibe para decidir cuándo dejar de agregar árboles (10 iteraciones sin mejora). Indicio: en la grilla de la sección 11 varias configuraciones dan exactamente el mismo AUC con 300 y con 500 iteraciones. Por eso `max_iter=300` es un tope, no el número efectivo de árboles (se puede ver con `best_model.named_steps["clf"].n_iter_`). Ese 10% interno se separa al azar, no agrupado por canción, pero queda dentro de train, así que no afecta a test; la semilla fija lo hace reproducible.
+- **Detención temprana (no configurada explícitamente):** en scikit-learn, `HistGradientBoostingClassifier` usa `early_stopping="auto"`, que se activa con más de 10.000 filas. Con ~71.700 canciones, el HGB aparta internamente un 10% de los datos que recibe como validación y se detendría tras 10 iteraciones sin mejora. En el modelo oficial el corte no ocurre: usa las 300 iteraciones (`n_iter_ = 300`), así que `max_iter=300` es el número efectivo de árboles; lo que sí cambia es que cada árbol se ajusta con el 90% restante. En la grilla de la sección 11, algunas configuraciones de 63 hojas dan el mismo AUC con 300 y 500 iteraciones porque ahí sí cortó antes. Ese 10% interno se separa al azar, no agrupado por canción, pero queda dentro de train, así que no afecta a test; la semilla fija lo hace reproducible.
 - **Selección del mejor modelo:** por AUC de validación cruzada sobre train; **test se usa solo para el reporte final**.
 - **Umbral de decisión (modelo oficial):** política por género y número de géneros (`src/metricas.py`), calibrada con probabilidades fuera de muestra de train (sección 5). Los tres modelos se comparan además con umbral 0,5.
 
@@ -29,9 +29,9 @@ Consume `data/processed/train|test` (generado al cierre del EDA; **no divide ni 
 
 | Modelo | AUC CV | Gap CV | Recall CV | Precisión CV | F1 CV |
 |---|---|---|---|---|---|
-| Regresión Logística | 0,8414 | 0,0026 | 0,808 | 0,438 | 0,568 |
-| Random Forest | 0,8238 | 0,0221 | 0,663 | 0,479 | 0,556 |
-| **HistGradientBoosting** | **0,8669** | 0,0338 | 0,818 | 0,468 | 0,596 |
+| Regresión Logística | 0,8409 | 0,0032 | 0,806 | 0,438 | 0,567 |
+| Random Forest | 0,8235 | 0,0219 | 0,655 | 0,479 | 0,552 |
+| **HistGradientBoosting** | **0,8678** | 0,0328 | 0,819 | 0,470 | 0,597 |
 
 **Mejor modelo: HistGradientBoosting** (AUC de CV más alto).
 
@@ -42,9 +42,9 @@ Consume `data/processed/train|test` (generado al cierre del EDA; **no divide ni 
 | Regresión Logística (0,5) | 0,8392 | 0,571 | 0,427 | 0,803 | 0,558 | 0,0046 | 3,04 |
 | Random Forest (0,5) | 0,8273 | 0,584 | 0,456 | 0,686 | 0,548 | 0,0183 | 3,21 |
 | HistGradientBoosting (0,5) | 0,8663 | 0,634 | 0,458 | 0,824 | 0,589 | 0,0299 | 3,43 |
-| **HGB + umbral por género (oficial)** | **0,8663** | **0,634** | 0,421 | 0,795 | 0,550 | 0,0299 | **3,43** |
+| **HGB + umbral por género (oficial)** | **0,8663** | **0,634** | 0,423 | 0,791 | 0,551 | 0,0299 | **3,43** |
 
-El AUC de test del mejor modelo (0,8663) es casi igual al de CV (0,8669): no hay señal de que la selección del modelo haya inflado el resultado. La política de umbral no cambia AUC, PR-AUC, gap ni lift (el ranking es el mismo); solo cambia qué canciones se marcan.
+El AUC de test del mejor modelo (0,8663) es casi igual al de CV (0,8678): no hay señal de que la selección del modelo haya inflado el resultado. La política de umbral no cambia AUC, PR-AUC, gap ni lift (el ranking es el mismo); solo cambia qué canciones se marcan.
 
 ![Curvas ROC](../output/graficos/08_curvas_roc.png)
 
@@ -60,7 +60,7 @@ El AUC de test del mejor modelo (0,8663) es casi igual al de CV (0,8669): no hay
 |---|---|---|---|---|---|
 | AUC-ROC | ≥ 0,80 | 0,866 ✔ | 0,866 ✔ | 0,839 ✔ | 0,827 ✔ |
 | Gap AUC | < 0,05 | 0,030 ✔ | 0,030 ✔ | 0,005 ✔ | 0,018 ✔ |
-| Recall | ≥ 0,75 | 0,795 ✔ | 0,824 ✔ | 0,803 ✔ | 0,686 ✘ |
+| Recall | ≥ 0,75 | 0,791 ✔ | 0,824 ✔ | 0,803 ✔ | 0,686 ✘ |
 | Lift@10% | ≥ 2,0 | 3,43 ✔ | 3,43 ✔ | 3,04 ✔ | 3,21 ✔ |
 
 > **Nota:** Random Forest no cumple el KPI de recall con umbral 0,5. Con las variables de texto marca menos (precisión 0,456, recall 0,686); en la versión anterior ya estaba al límite (0,757). No es el modelo elegido, pero debe declararse.
@@ -69,11 +69,11 @@ El AUC de test del mejor modelo (0,8663) es casi igual al de CV (0,8669): no hay
 
 | | Versión anterior | Modelo oficial |
 |---|---|---|
-| AUC test / CV | 0,857 / 0,856 | **0,866 / 0,867** |
+| AUC test / CV | 0,857 / 0,856 | **0,866 / 0,868** |
 | Gap AUC | 0,026 | 0,030 |
 | Lift@10% | 3,36 | **3,43** |
-| Recall / Precisión | 0,833 / 0,425 | 0,795 / 0,421 |
-| Recall en géneros de hit rate < 10% | 0,148 | **0,357** |
+| Recall / Precisión | 0,833 / 0,425 | 0,791 / 0,423 |
+| Recall en géneros de hit rate < 10% | 0,148 | **0,354** |
 | Marcadas / hit rate, canciones de 3+ géneros | 2,27 | **1,74** |
 
 Los tres cambios: hiperparámetros elegidos por CV (sección 11 del notebook), variables de texto (sección 13) y política de umbral (sección 10). La tabla mezcla los tres cambios y compara contra el umbral 0,5 del modelo anterior; el costo de la política por sí sola se mide en la sección 5.
@@ -82,7 +82,7 @@ Los tres cambios: hiperparámetros elegidos por CV (sección 11 del notebook), v
 
 | Prueba | Resultado |
 |---|---|
-| **Ablación** (HGB, CV agrupada) | AUC **0,867 con género → 0,706 sin género** (aporte +0,161) |
+| **Ablación** (HGB, CV agrupada) | AUC **0,868 con género → 0,707 sin género** (aporte +0,161) |
 | **Importancia por permutación** (test) | Bloque de género: caída de AUC **0,309**; siguiente variable (`energy`): 0,009 |
 | **Sin género** (test, columnas de género anuladas) | AUC 0,712 · recall 0,679 · precisión 0,321 · lift 2,13 |
 | **K-Means** (solo audio, k=2 y k=7 estable) | Los clusters separan estilos sonoros pero no el éxito: con k=7 los hit rates van de 0,10 a 0,24 y usar solo el cluster da un AUC de apenas 0,576 |
@@ -98,7 +98,7 @@ Los tres cambios: hiperparámetros elegidos por CV (sección 11 del notebook), v
 - **Elección de k:** el silhouette más alto es k = 2 (0,240), pero solo separa "tranquilo/acústico" de "enérgico" (hit rate 0,19 frente a 0,21). Desde k = 3 los valores son bajos y parecidos (0,14 a 0,17); se revisaron también el codo y Davies-Bouldin.
 - **Estabilidad:** ajustando en dos mitades de train, el acuerdo (ARI) es ≥ 0,957 hasta k = 7 y cae a 0,677 en k = 8. Se segmenta con **k = 7**.
 - **Patrones:** familias de estilo (pop urbano bailable, metal y dubstep, techno instrumental, ambient/clásica, música brasileña en vivo, comedia y habla explícita, cantautor acústico) con hit rate entre ≈ 0,10 y ≈ 0,24. Usar solo el cluster da AUC 0,576.
-- **Géneros por perfil de audio (k = 3, K-Means y Ward, ARI 0,47):** un grupo de 12 géneros acústicos/instrumentales (piano, ambient, guitar, disney) tiene hit rate medio 0,12 frente a 0,245 de los otros dos, y el modelo oficial los detecta algo peor (recall 0,75 frente a 0,79 y 0,81).
+- **Géneros por perfil de audio (k = 3, K-Means y Ward, ARI 0,47):** un grupo de 12 géneros acústicos/instrumentales (piano, ambient, guitar, disney) tiene hit rate medio 0,12 frente a 0,245 de los otros dos, y el modelo oficial los detecta algo peor (recall 0,74 frente a 0,79 y 0,80).
 - **Uso de negocio:** segmentar el catálogo por estilo para adaptar campañas; no sustituye al género ni predice popularidad por sí solo.
 
 ![Silhouette por k](../output/graficos/15_kmeans_silhouette.png)
@@ -120,14 +120,14 @@ Los tres cambios: hiperparámetros elegidos por CV (sección 11 del notebook), v
 | 0,5 | 0,458 | 0,824 | 0,589 | 37,0% |
 | 0,6 | 0,524 | 0,715 | 0,605 | 28,0% |
 | 0,7 | 0,603 | 0,559 | 0,581 | 19,0% |
-| **Política oficial** | **0,421** | **0,795** | **0,550** | **38,8%** |
+| **Política oficial** | **0,423** | **0,791** | **0,551** | **38,4%** |
 
-Un umbral único calibrado en train para recall 0,78 (0,536) da precisión 0,482 y recall 0,788, pero reparte el recall igual de mal entre géneros. Por eso el modelo oficial usa una política por canción. **Costo:** a igual recall, la política tiene ≈ 6 puntos menos de precisión que ese umbral único (0,421 frente a 0,482); frente al umbral 0,5, ≈ 4 puntos (0,458).
+Un umbral único calibrado en train para recall 0,78 (0,537) da precisión 0,483 y recall 0,786, pero reparte el recall igual de mal entre géneros. Por eso el modelo oficial usa una política por canción. **Costo:** a igual recall, la política tiene ≈ 6 puntos menos de precisión que ese umbral único (0,423 frente a 0,483); frente al umbral 0,5, ≈ 3 puntos (0,458).
 
 ### Cómo funciona (`src/metricas.py`)
 
 1. **Umbral por género:** el que logra recall 0,78 sobre los hits de ese género, con probabilidades fuera de muestra de train. Si el género tiene pocos hits, se encoge hacia el umbral global: `u = a·u_género + (1 − a)·u_global`, con `a = hits / (hits + 30)`. Una canción con varios géneros usa el promedio de sus umbrales.
-2. **Corrección por número de géneros (1, 2, 3+):** desplazamiento por grupo para que el recall fuera de muestra de cada grupo sea 0,78 (1: −0,019; 2: +0,031; 3+: +0,059).
+2. **Corrección por número de géneros (1, 2, 3+):** desplazamiento por grupo para que el recall fuera de muestra de cada grupo sea 0,78 (1: −0,019; 2: +0,034; 3+: +0,059).
 
 Los parámetros (0,78 y 30) son decisiones de diseño: 0,78 da margen sobre el KPI de 0,75 y 30 es el mínimo de hits que usaba una versión anterior. Los umbrales se calibran solo con probabilidades fuera de muestra de train, pero no se exploró la sensibilidad de la política a estos dos valores.
 
@@ -136,13 +136,13 @@ Los parámetros (0,78 y 30) son decisiones de diseño: 0,78 da margen sobre el K
 | Política | Recall | Precisión | % marcadas | Recall géneros hit rate < 10% | Recall macro | % géneros con recall ≥ 0,75 | Marcadas / hit rate (1 · 2 · 3+ géneros) |
 |---|---|---|---|---|---|---|---|
 | Umbral 0,5 | 0,824 | 0,458 | 37,0% | 0,144 | 0,559 | 45,9% | 1,82 · 1,59 · 2,18 |
-| Solo por n° de géneros | 0,788 | 0,480 | 33,7% | 0,114 | 0,504 | 41,3% | 1,72 · 1,35 · 1,73 |
-| Solo por género | 0,776 | 0,429 | 37,1% | 0,346 | 0,597 | 50,5% | 1,85 · 1,62 · 1,96 |
-| **Oficial (género + n° de géneros)** | **0,795** | **0,421** | **38,8%** | **0,357** | **0,595** | **51,4%** | **2,04 · 1,46 · 1,74** |
-| Equidad fuerte (alternativa) | 0,832 | 0,276 | 61,9% | 0,719 | 0,779 | 76,1% | 3,54 · 1,70 · 1,88 |
+| Solo por n° de géneros | 0,787 | 0,480 | 33,7% | 0,114 | 0,502 | 40,4% | 1,72 · 1,34 · 1,74 |
+| Solo por género | 0,778 | 0,433 | 36,9% | 0,350 | 0,600 | 49,5% | 1,83 · 1,62 · 1,96 |
+| **Oficial (género + n° de géneros)** | **0,791** | **0,423** | **38,4%** | **0,354** | **0,591** | **48,6%** | **2,02 · 1,43 · 1,74** |
+| Equidad fuerte (alternativa) | 0,833 | 0,285 | 59,9% | 0,711 | 0,771 | 71,6% | 3,42 · 1,68 · 1,86 |
 
-- **Bootstrap (300 réplicas, diferencia pareada frente a 0,5):** recall de nicho +0,21 [0,15; 0,26], recall macro +0,04 [0,02; 0,05], recall global −0,03 [−0,04; −0,02], precisión −0,04 [−0,04; −0,03]. Las diferencias superan el ruido.
-- **Precisión por número de géneros** (umbral 0,5 → oficial): 1 género 0,444 → 0,391; 2 géneros 0,531 → 0,544; 3+ géneros 0,416 → 0,455. La política iguala el recall entre grupos, pero las canciones de 1 género (81% del catálogo) se marcan más (1,82 → 2,04 veces su hit rate). La variante "solo por n° de géneros" queda mejor en los grupos 1 y 2 (1,72 y 1,35), a costa del recall de nicho (0,114).
+- **Bootstrap (300 réplicas, diferencia pareada frente a 0,5):** recall de nicho +0,21 [0,15; 0,26], recall macro +0,03 [0,02; 0,05], recall global −0,03 [−0,05; −0,02], precisión −0,03 [−0,04; −0,03]. Las diferencias superan el ruido.
+- **Precisión por número de géneros** (umbral 0,5 → oficial): 1 género 0,444 → 0,393; 2 géneros 0,531 → 0,549; 3+ géneros 0,416 → 0,455. La política iguala el recall entre grupos, pero las canciones de 1 género (81% del catálogo) se marcan más (1,82 → 2,02 veces su hit rate). La variante "solo por n° de géneros" queda mejor en los grupos 1 y 2 (1,72 y 1,34), a costa del recall de nicho (0,114).
 - **Equidad fuerte** (sin encogimiento, recall objetivo 0,82): casi iguala el recall entre géneros, pero 7 de cada 10 canciones marcadas no son hit. No se adopta; queda para un sello que priorice la diversidad del catálogo.
 
 ![Política de umbral: recall por tramo de hit rate del género y sobre-marcado por número de géneros](../output/graficos/20_politica_umbral.png)
@@ -154,7 +154,7 @@ La política no cambia el ranking, así que el 10% superior sigue concentrado en
 | Ranking | Lift@10% | % hits | Hits de géneros de nicho capturados | Géneros presentes |
 |---|---|---|---|---|
 | Por probabilidad (oficial) | 3,43 | 70,4% | 1,5% | 68 de 114 |
-| Por margen sobre el umbral del género | 2,40 | 49,3% | 14,1% | 91 de 114 |
+| Por margen sobre el umbral del género | 2,44 | 50,1% | 14,4% | 91 de 114 |
 
 Ordenar por margen cumple el KPI de lift y reparte mejor la campaña, a costa de un tercio del lift. Queda como alternativa.
 
@@ -162,13 +162,13 @@ Ordenar por margen cumple el KPI de lift y reparte mejor la campaña, a costa de
 
 | Hit rate del género | Géneros | Recall (0,5) | Recall (oficial) | % marcadas (0,5) | % marcadas (oficial) |
 |---|---|---|---|---|---|
-| Bajo (< 10%) | 35 | 0,144 | **0,357** | 2,3% | 8,1% |
-| Medio (10–25%) | 31 | 0,594 | **0,705** | 30,7% | 43,0% |
-| Alto (25–50%) | 33 | 0,944 | 0,834 | 81,7% | 67,4% |
+| Bajo (< 10%) | 35 | 0,144 | **0,354** | 2,3% | 7,8% |
+| Medio (10–25%) | 31 | 0,594 | **0,700** | 30,7% | 42,1% |
+| Alto (25–50%) | 33 | 0,944 | 0,827 | 81,7% | 67,1% |
 | Muy alto (> 50%) | 10 | 0,996 | 0,886 | 94,3% | 78,1% |
 
-- Recall macro por género: 0,559 → **0,595**. Géneros bajo el KPI de 0,75: 59 → **53 (49%)**.
-- Correlación entre el hit rate del género y su recall: 0,95 → **0,84**.
+- Recall macro por género: 0,559 → **0,591**. Géneros bajo el KPI de 0,75: 59 → **56 (51%)**.
+- Correlación entre el hit rate del género y su recall: 0,95 → **0,83**.
 
 **Lectura:** la política traslada recall de los géneros muy populares hacia los medios y de nicho. El sesgo baja, pero no desaparece: el modelo sigue apoyándose en el género.
 
@@ -189,17 +189,17 @@ Cada prueba reentrena el mejor modelo (mismos hiperparámetros) cambiando solo u
 | 5 | **Entrenar y evaluar solo con canciones de 1 género** | AUC 0,875 (oficial en las mismas canciones: 0,875) | En canciones de 1 género el AUC no se apoya en el conteo implícito. En multigénero el AUC es menor (tabla siguiente) |
 | 6 | **Modelo con una fila por (canción, género)** y predicción promediada. *Prueba exploratoria fuera del notebook* | AUC 0,849; las canciones de 3+ géneros quedaron más marcadas (2,42 veces su hit rate) | **No se adopta:** empeora el AUC y no corrige el sobre-marcado |
 | 7 | **Reponderar por género** (igualar hits y no hits dentro de cada género). *Prueba exploratoria fuera del notebook* | AUC 0,686 (bajo el KPI) | **No se adopta:** el modelo pierde la señal principal |
-| 8 | **Ensamble HGB + Regresión Logística** | CV −0,0075; test 0,858 | **No se adopta** |
+| 8 | **Ensamble HGB + Regresión Logística** | CV −0,007; test 0,858 | **No se adopta** |
 
 ### ¿El modelo premia a las canciones con más géneros?
 
 | Géneros | Canciones (test) | Hit rate real | Esperado por sus géneros | Marcadas (0,5) | Marcadas (oficial) | Marcadas / hit rate (0,5 → oficial) | Recall (0,5 → oficial) | AUC |
 |---|---|---|---|---|---|---|---|---|
-| 1 | 14.678 | 0,178 | 0,195 | 32,4% | 36,3% | 1,82 → 2,04 | 0,809 → 0,797 | 0,875 |
-| 2 | 2.286 | 0,346 | 0,294 | 54,9% | 50,3% | 1,59 → 1,46 | 0,844 → 0,792 | 0,824 |
+| 1 | 14.678 | 0,178 | 0,195 | 32,4% | 35,9% | 1,82 → 2,02 | 0,809 → 0,793 | 0,875 |
+| 2 | 2.286 | 0,346 | 0,294 | 54,9% | 49,4% | 1,59 → 1,43 | 0,844 → 0,785 | 0,824 |
 | 3 o más | 1.070 | 0,279 | 0,312 | 60,8% | 48,5% | 2,18 → **1,74** | 0,906 → 0,789 | 0,795 |
 
-**Conclusión:** con umbral 0,5 las canciones de 3 o más géneros se marcaban de más (2,18 veces su tasa de hits). La política oficial iguala el recall entre grupos (≈ 0,79): en 3+ el sobre-marcado baja a 1,74, pero en 1 género sube de 1,82 a 2,04. El AUC sigue siendo menor en canciones multigénero (0,813 frente a 0,875): ordenarlas es más difícil y eso el umbral no lo cambia.
+**Conclusión:** con umbral 0,5 las canciones de 3 o más géneros se marcaban de más (2,18 veces su tasa de hits). La política oficial iguala el recall entre grupos (≈ 0,79): en 3+ el sobre-marcado baja a 1,74, pero en 1 género sube de 1,82 a 2,02. El AUC sigue siendo menor en canciones multigénero (0,813 frente a 0,875): ordenarlas es más difícil y eso el umbral no lo cambia.
 
 ### Alternativas descartadas por diseño
 
@@ -211,17 +211,17 @@ Cada prueba reentrena el mejor modelo (mismos hiperparámetros) cambiando solo u
 
 **Modelo: HistGradientBoosting (profundidad libre, 31 hojas, `min_samples_leaf=20`, L2 = 1), multi-hot binario, variables de texto, split agrupado por canción, target absoluto (P80 de train = 52), popularidad 0 como no hit, política de umbral por género y número de géneros.**
 
-Se eligió porque: (a) tiene el mejor AUC de CV y de test y cumple los cuatro KPIs; (b) frente a la versión anterior sube AUC y lift, con precisión similar (0,425 → 0,421), sube el recall en géneros de nicho de 0,148 a 0,357 e iguala el recall entre canciones de 1, 2 y 3+ géneros; (c) los modelos, la configuración y los umbrales se eligieron con CV o con probabilidades fuera de muestra de train. Los parámetros de diseño (recall objetivo 0,78, encogimiento 30 y la regla gap de CV < 0,04) son decisiones de criterio sin análisis de sensibilidad.
+Se eligió porque: (a) tiene el mejor AUC de CV y de test y cumple los cuatro KPIs; (b) frente a la versión anterior sube AUC y lift, con precisión similar (0,425 → 0,423), sube el recall en géneros de nicho de 0,148 a 0,354 e iguala el recall entre canciones de 1, 2 y 3+ géneros; (c) los modelos, la configuración y los umbrales se eligieron con CV o con probabilidades fuera de muestra de train. Los parámetros de diseño (recall objetivo 0,78, encogimiento 30 y la regla gap de CV < 0,04) son decisiones de criterio sin análisis de sensibilidad.
 
-**Costos que se aceptan:** ≈ 6 puntos de precisión frente a un umbral único con el mismo recall; el recall baja en géneros de hit rate alto (0,944 → 0,834) y muy alto (0,996 → 0,886); los nichos quedan en 0,357, lejos del KPI, con ≈ 7 hits por género en test.
+**Costos que se aceptan:** ≈ 6 puntos de precisión frente a un umbral único con el mismo recall; el recall baja en géneros de hit rate alto (0,944 → 0,827) y muy alto (0,996 → 0,886); los nichos quedan en 0,354, lejos del KPI, con ≈ 7 hits por género en test.
 
 ## 8. Sesgos: balance final
 
 | Sesgo | Estado |
 |---|---|
 | Duplicados, fuga train/test, selección con test | **Evitados** |
-| Sobre-marcado según número de géneros | **Redistribuido:** recall igualado (≈ 0,79); 3+ baja de 2,18 a 1,74 veces su hit rate, pero 1 género sube de 1,82 a 2,04 |
-| **Recall desigual entre géneros** | **Reducido, no evitado:** nicho 0,14 → 0,36; el 49% de los géneros sigue bajo 0,75 |
+| Sobre-marcado según número de géneros | **Redistribuido:** recall igualado (≈ 0,79); 3+ baja de 2,18 a 1,74 veces su hit rate, pero 1 género sube de 1,82 a 2,02 |
+| **Recall desigual entre géneros** | **Reducido, no evitado:** nicho 0,14 → 0,35; el 51% de los géneros sigue bajo 0,75 |
 | **Dominio del género** | **No evitado:** sin género el AUC cae a 0,71; la campaña del 10% superior sigue concentrada en géneros populares |
 | Artistas repetidos | **Medido:** −0,008 de AUC con split por artista (cota inferior) |
 | Popularidad 0 | **Medido:** excluirla no reduce el aporte del género (escenarios no comparables directamente) |
@@ -230,7 +230,7 @@ Se eligió porque: (a) tiene el mejor AUC de CV y de test y cumple los cuatro KP
 ## 9. Limitaciones y uso recomendado
 
 1. El KPI de AUC ≥ 0,80 depende del género; sin género el AUC es ≈ 0,71.
-2. El recall sigue desigual entre géneros; la política lo reduce pero el 49% de los géneros no llega a 0,75.
+2. El recall sigue desigual entre géneros; la política lo reduce pero el 51% de los géneros no llega a 0,75.
 3. La precisión es ≈ 0,42: más de la mitad de las canciones marcadas no son hits.
 4. Dos canciones con la misma probabilidad pueden recibir decisiones distintas según su género (decisión de política, no solo técnica).
 5. El split por canción deja artistas repetidos entre train y test (efecto ≥ 0,008 de AUC: cota inferior).
@@ -239,7 +239,7 @@ Se eligió porque: (a) tiene el mejor AUC de CV y de test y cumple los cuatro KP
 8. El dataset (1.000 filas por género, popularidad puntual) no permite extrapolar al mercado real.
 9. La política cuesta ≈ 6 puntos de precisión frente a un umbral único con el mismo recall, y sus parámetros (0,78 y 30) no tienen análisis de sensibilidad.
 
-**Uso recomendado:** priorizar canciones para campañas (lift 3,43 en el 10% superior). Si la campaña debe incluir géneros de nicho, ordenar por margen sobre el umbral del género (lift 2,40). El modelo captura sobre todo qué géneros son populares, **no** qué hace a una canción un hit; no debe usarse para afirmar que el audio de una canción causará su popularidad.
+**Uso recomendado:** priorizar canciones para campañas (lift 3,43 en el 10% superior). Si la campaña debe incluir géneros de nicho, ordenar por margen sobre el umbral del género (lift 2,44). El modelo captura sobre todo qué géneros son populares, **no** qué hace a una canción un hit; no debe usarse para afirmar que el audio de una canción causará su popularidad.
 
 ## 10. Salidas
 
@@ -253,4 +253,4 @@ Se eligió porque: (a) tiene el mejor AUC de CV y de test y cumple los cuatro KP
 ```
 python main.py
 ```
-ejecuta split raw → processed → entrenamiento (con calibración de la política) → evaluación en test. Para regenerar todo desde cero, borrar `data/raw/train|test`, `data/processed` y `output/modelos` antes (eso también borra los cachés de la sección 2b y de la grilla de la sección 11, que se recalculan al ejecutar el notebook). El split es determinista (`random_state=42`). Las probabilidades fuera de muestra (y por lo tanto los umbrales de la política) pueden variar levemente entre sistemas operativos, así que el recall y la precisión oficiales pueden moverse en el tercer decimal.
+ejecuta split raw → processed → entrenamiento (con calibración de la política) → evaluación en test. Para regenerar todo desde cero, borrar `data/raw/train|test`, `data/processed` y `output/modelos` antes (eso también borra los cachés de la sección 2b y de la grilla de la sección 11, que se recalculan al ejecutar el notebook). El split es determinista (`random_state=42`). Con las versiones fijadas en `requirements.txt` / `environment.yml` (scikit-learn 1.8.0, pandas 3.0.3, numpy 2.4.6) los resultados se reproducen exactamente; se verificó con corridas idénticas en Windows y Linux. Con otra versión de scikit-learn cambian los resultados que dependen de la validación cruzada (por ejemplo, con 1.5.2 el recall oficial da 0,795), así que conviene comprobar las versiones antes de ejecutar.

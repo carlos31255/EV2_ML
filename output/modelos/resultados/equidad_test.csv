@@ -1,13 +1,13 @@
 ,HistGradientBoosting (umbral 0.5),HistGradientBoosting + umbral por genero (oficial)
-recall_macro_generos,0.5592,0.595
-recall_generos_hit_rate_bajo_10pct,0.1445,0.3574
-pct_generos_recall_kpi,45.8716,51.3761
-marcadas_sobre_hit_rate_1,1.822,2.0375
-recall_1_generos,0.809,0.7968
-precision_1_generos,0.444,0.3911
-marcadas_sobre_hit_rate_2,1.5899,1.457
-recall_2_generos,0.8443,0.7924
-precision_2_generos,0.5311,0.5439
+recall_macro_generos,0.5592,0.591
+recall_generos_hit_rate_bajo_10pct,0.1445,0.3536
+pct_generos_recall_kpi,45.8716,48.6239
+marcadas_sobre_hit_rate_1,1.822,2.0165
+recall_1_generos,0.809,0.793
+precision_1_generos,0.444,0.3932
+marcadas_sobre_hit_rate_2,1.5899,1.4304
+recall_2_generos,0.8443,0.7848
+precision_2_generos,0.5311,0.5487
 marcadas_sobre_hit_rate_3+,2.1773,1.7358
 recall_3+_generos,0.9064,0.7893
 precision_3+_generos,0.4163,0.4547
