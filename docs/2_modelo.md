@@ -95,6 +95,7 @@ Los tres cambios: hiperparámetros elegidos por CV (sección 11 del notebook), v
 
 ### K-Means (no supervisado, solo variables de audio)
 
+- **Por qué solo audio y por qué K-Means:** la pregunta es si el sonido por sí solo forma segmentos y si se relacionan con el éxito. El género se excluye porque, con 114 columnas binarias, los clusters reproducirían los géneros; la popularidad, porque la técnica es no supervisada. Se usa K-Means porque las variables de audio son numéricas y continuas (escaladas igual que en el modelo), escala bien a más de 70.000 canciones y sus centroides se leen como perfiles de sonido.
 - **Elección de k:** el silhouette más alto es k = 2 (0,240), pero solo separa "tranquilo/acústico" de "enérgico" (hit rate 0,19 frente a 0,21). Desde k = 3 los valores son bajos y parecidos (0,14 a 0,17); se revisaron también el codo y Davies-Bouldin.
 - **Estabilidad:** ajustando en dos mitades de train, el acuerdo (ARI) es ≥ 0,957 hasta k = 7 y cae a 0,677 en k = 8. Se segmenta con **k = 7**.
 - **Patrones:** familias de estilo (pop urbano bailable, metal y dubstep, techno instrumental, ambient/clásica, música brasileña en vivo, comedia y habla explícita, cantautor acústico) con hit rate entre ≈ 0,10 y ≈ 0,24. Usar solo el cluster da AUC 0,576.

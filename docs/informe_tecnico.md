@@ -87,7 +87,7 @@ Se evaluaron tres algoritmos de clasificación de distinta complejidad, todos co
 **Variables de texto (sección 13):** quitarlas baja el AUC de CV de 0.8661 a 0.8629. Mejora pequeña y consistente, sin usar la identidad del artista.
 
 ## 8. Modelación No Supervisada: K-Means
-Se aplicó K-Means usando **únicamente las variables acústicas** (sin género ni popularidad), para ver si el audio por sí solo forma segmentos y si estos se relacionan con el éxito.
+Se aplicó K-Means usando **únicamente las variables acústicas** (sin género ni popularidad), para ver si el audio por sí solo forma segmentos y si estos se relacionan con el éxito. El género se excluye porque, con 114 columnas binarias, los clusters reproducirían los géneros; la popularidad, porque la técnica es no supervisada. Se eligió K-Means porque las variables de audio son numéricas y continuas (se usan escaladas, igual que en el modelo), el método escala bien a más de 70.000 canciones y sus centroides se leen como perfiles de sonido.
 
 - **Elección de k:** el silhouette más alto es k = 2 (0.240), pero solo separa canciones "tranquilas/acústicas" de "enérgicas", con hit rate casi igual (0.19 frente a 0.21). Desde k = 3 los silhouette son bajos y parecidos (0.14 a 0.17): el audio no tiene una estructura de grupos nítida. Se usaron también el codo (inercia) y Davies-Bouldin.
 - **Estabilidad:** al ajustar K-Means en dos mitades de train, el acuerdo es alto hasta k = 7 (ARI ≥ 0.957) y cae en k = 8 (0.677). Por eso se segmenta con **k = 7**.
